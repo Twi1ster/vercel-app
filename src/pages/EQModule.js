@@ -30,11 +30,16 @@ const parseNum = v => {
   return parseFloat(s) || 0;
 };
 const parseDate = v => {
-  if (!v) return '';
-  const d = v instanceof Date ? v : null;
-  if (d) {
-    return `${String(d.getUTCDate()).padStart(2,'0')}.${String(d.getUTCMonth()+1).padStart(2,'0')}.${d.getUTCFullYear()}`;
+  if (!v && v !== 0) return '';
+  const fmt = (d, m, y) => `${String(d).padStart(2,'0')}.${String(m).padStart(2,'0')}.${y}`;
+  if (v instanceof Date) return fmt(v.getDate(), v.getMonth()+1, v.getFullYear());
+  const n = Number(v);
+  if (!isNaN(n) && n > 30000 && n < 80000) {
+    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+    return fmt(d.getDate(), d.getMonth()+1, d.getFullYear());
   }
+  const match = String(v).trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (match) return fmt(match[1], match[2], match[3]);
   return String(v);
 };
 
