@@ -11,13 +11,17 @@ module.exports = async (req, res) => {
   await connectDB();
   const { search = '', page = 1, limit = 100 } = req.query;
 
-  const eqFilter = {};
+  const eqFilter = {
+    $or: [{ odenisTarixi: '' }, { odenisTarixi: null }, { odenisTarixi: { $exists: false } }],
+  };
   if (search) {
-    eqFilter.$or = [
-      { voen:           { $regex: search, $options: 'i' } },
-      { icazeNo:        { $regex: search, $options: 'i' } },
-      { reklamYayicisi: { $regex: search, $options: 'i' } },
-    ];
+    eqFilter.$and = [{
+      $or: [
+        { voen:           { $regex: search, $options: 'i' } },
+        { icazeNo:        { $regex: search, $options: 'i' } },
+        { reklamYayicisi: { $regex: search, $options: 'i' } },
+      ]
+    }];
   }
 
   const skip = (Number(page) - 1) * Number(limit);
