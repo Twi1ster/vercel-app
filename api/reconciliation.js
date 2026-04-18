@@ -27,15 +27,22 @@ module.exports = async (req, res) => {
 
   // İcazə nömrəsi üzrə qrup: hər icazənin EQ-ləri və bank medaxilləri birlikdə
   const groups = {};
+  const eqNomresiToIcaze = new Map();
   eqData.forEach(eq => {
     const key = (eq.icazeNo || '').trim() || `__no_icaze__${eq._id}`;
     if (!groups[key]) groups[key] = { eqs: [], banks: [] };
     groups[key].eqs.push(eq);
+    const eqNo = (eq.eqNomresi || '').trim();
+    if (eqNo) eqNomresiToIcaze.set(eqNo, key);
   });
+  // Bank qeydləri Müraciət № / EQF № üzrə uyğunlaşdırılır:
+  // əvvəlcə icazə №-si kimi, sonra EQ №-si kimi axtarırıq
   bankData.forEach(b => {
-    const key = (b.muracietNomresiEqfNomresi || '').trim();
-    if (!key || !groups[key]) return;
-    groups[key].banks.push(b);
+    const ref = (b.muracietNomresiEqfNomresi || '').trim();
+    if (!ref) return;
+    if (groups[ref]) { groups[ref].banks.push(b); return; }
+    const viaEq = eqNomresiToIcaze.get(ref);
+    if (viaEq && groups[viaEq]) groups[viaEq].banks.push(b);
   });
 
   // Bir növbədən (FIFO) müəyyən məbləği çıxar; istifadə olunan son bankın tarix və qeydini qaytar
