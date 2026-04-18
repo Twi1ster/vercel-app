@@ -9,25 +9,12 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).end();
 
   await connectDB();
-  const { search = '', page = 1, limit = 100 } = req.query;
 
-  const eqFilter = {
-    $or: [{ odenisTarixi: '' }, { odenisTarixi: null }, { odenisTarixi: { $exists: false } }],
-  };
-  if (search) {
-    eqFilter.$and = [{
-      $or: [
-        { voen:           { $regex: search, $options: 'i' } },
-        { icazeNo:        { $regex: search, $options: 'i' } },
-        { reklamYayicisi: { $regex: search, $options: 'i' } },
-      ]
-    }];
-  }
-
-  const skip = (Number(page) - 1) * Number(limit);
-  const [eqData, total, bankData] = await Promise.all([
-    ElektronQaime.find(eqFilter).sort({ eqTarixi: -1 }).skip(skip).limit(Number(limit)).lean(),
-    ElektronQaime.countDocuments(eqFilter),
+  // Yalnız ödəniş tarixi boş olan EQ-lar
+  const [eqData, bankData] = await Promise.all([
+    ElektronQaime.find({
+      $or: [{ odenisTarixi: '' }, { odenisTarixi: null }, { odenisTarixi: { $exists: false } }],
+    }).lean(),
     BankHesab.find({}).lean(),
   ]);
 
@@ -44,59 +31,36 @@ module.exports = async (req, res) => {
     const icaze = (eq.icazeNo || '').trim();
     const matched = bankByRef[icaze] || [];
 
-    const esasPayments = matched.filter(b =>
-      (b.hesabatUzreTeyinat || '').trim() === ESAS_TEYINAT
-    );
-    const edvPayments = matched.filter(b =>
-      (b.hesabatUzreTeyinat || '').trim() === EDV_TEYINAT
-    );
+    const esasRec = matched.filter(b => (b.hesabatUzreTeyinat || '').trim() === ESAS_TEYINAT);
+    const edvRec  = matched.filter(b => (b.hesabatUzreTeyinat || '').trim() === EDV_TEYINAT);
 
-    const paidEsas = esasPayments.reduce((s, b) => s + (b.medaxil || 0), 0);
-    const paidEdv  = edvPayments.reduce((s,  b) => s + (b.medaxil || 0), 0);
-
-    const esasTarix = esasPayments.length ? esasPayments[esasPayments.length - 1].tarix : '';
-    const edvTarix  = edvPayments.length  ? edvPayments[edvPayments.length   - 1].tarix : '';
-    const esasQeyd  = esasPayments.map(b => b.qeyd).filter(Boolean).join(', ');
-    const edvQeyd   = edvPayments.map(b  => b.qeyd).filter(Boolean).join(', ');
+    const paidEsas = esasRec.reduce((s, b) => s + (b.medaxil || 0), 0);
+    const paidEdv  = edvRec.reduce((s,  b) => s + (b.medaxil || 0), 0);
+    const esasTarix = esasRec.length ? esasRec[esasRec.length - 1].tarix : '';
+    const edvTarix  = edvRec.length  ? edvRec[edvRec.length   - 1].tarix : '';
+    const esasQeyd  = esasRec.map(b => b.qeyd).filter(Boolean).join(', ');
+    const edvQeyd   = edvRec.map(b  => b.qeyd).filter(Boolean).join(', ');
 
     const eqEsas = eq.eqMeblegEsas || 0;
     const eqEdv  = eq.eqMeblegEdv  || 0;
 
-    const qaliqEsas = eqEsas - paidEsas;
-    const qaliqEdv  = eqEdv  - paidEdv;
-    const artiqEsas = qaliqEsas < -0.01 ? Math.abs(qaliqEsas) : 0;
-    const artiqEdv  = qaliqEdv  < -0.01 ? Math.abs(qaliqEdv)  : 0;
-
-    const paidTotal  = paidEsas + paidEdv;
-    const eqTotal    = eqEsas + eqEdv;
-    const qaliq      = eqTotal - paidTotal;
-    const artiqOdenis = artiqEsas + artiqEdv;
-
-    let status = 'Ödənilməyib';
-    if (matched.length > 0) {
-      if (Math.abs(qaliq) < 0.01)  status = 'Tam Ödənilmiş';
-      else if (artiqOdenis > 0.01) status = 'Artıq Ödəniş';
-      else                         status = 'Qismən Ödənilmiş';
-    }
+    const artiqEsas = paidEsas > eqEsas + 0.01 ? paidEsas - eqEsas : 0;
+    const artiqEdv  = paidEdv  > eqEdv  + 0.01 ? paidEdv  - eqEdv  : 0;
 
     return {
-      _id: eq._id,
-      voen: eq.voen || '',
       reklamYayicisi: eq.reklamYayicisi || '',
-      icazeNo: icaze,
-      eqNomresi: eq.eqNomresi || '',
-      eqTarixi: eq.eqTarixi || '',
-      eqEsas, eqEdv, eqTotal,
-      paidEsas, esasTarix,
-      paidEdv,  edvTarix,
-      paidTotal,
-      qaliqEsas, qaliqEdv, qaliq,
-      artiqEsas, artiqEdv, artiqOdenis,
-      esasQeyd, edvQeyd,
-      status,
-      bankCount: matched.length,
+      voen:           eq.voen || '',
+      icazeNo:        icaze,
+      eqTarixi:       eq.eqTarixi || '',
+      eqNomresi:      eq.eqNomresi || '',
+      eqEsas,
+      eqEdv,
+      paidEsas,    esasTarix, esasQeyd,
+      paidEdv,     edvTarix,  edvQeyd,
+      artiqEsas,   artiqEdv,
+      hasMatch: matched.length > 0,
     };
   });
 
-  res.json({ data: result, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+  res.json(result);
 };

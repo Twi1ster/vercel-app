@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
 
+const HEADERS = [
+  'Reklam yayıcısının adı', 'VÖEN', 'İcazə',
+  'Elektron qaimənin tarixi', 'Elektron qaimənin nömrəsi',
+  'EQ məbləği(əsas)', 'EQ məbləği(ƏDV)',
+  'Ödəniş tarixi', 'Ödəniş məbləği(Əsas)',
+  'Ödəniş tarixi(ƏDV)', 'Ödəniş məbləği(ƏDV)',
+  'Qeyd',
+];
+
+const COL_WIDTHS = [35, 15, 20, 16, 22, 18, 16, 14, 18, 14, 18, 16];
+
 export default function Reconciliation({ api }) {
   const [loading, setLoading] = useState(false);
 
@@ -8,104 +19,80 @@ export default function Reconciliation({ api }) {
     try {
       const [{ default: ExcelJS }, res] = await Promise.all([
         import('exceljs'),
-        fetch(`${api}/api/reconciliation?limit=100000`),
+        fetch(`${api}/api/reconciliation`),
       ]);
-      const json = await res.json();
-      const data = json.data || [];
+      const data = await res.json();
 
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet('Rekonsiliasiya');
 
-      const HEADERS = [
-        'VÖEN', 'Reklam Yayıcısı', 'İcazə №', 'EQ Nömrəsi', 'EQ Tarixi',
-        'EQ Əsas (Yayım haqqı yığımı)', 'EQ ƏDV (ƏDV daxilolma)', 'EQ CƏMİ',
-        'Ödənilmiş (Əsas)', 'Ödəniş Tarixi (Əsas)', 'Qeyd (Əsas)',
-        'Ödənilmiş (ƏDV)', 'Ödəniş Tarixi (ƏDV)', 'Qeyd (ƏDV)',
-        'Ödənilmiş CƏMİ', 'Qalıq (Əsas)', 'Qalıq (ƏDV)', 'Status', 'Mənbə',
-      ];
-
-      // Header row
+      // Header
       const headerRow = ws.addRow(HEADERS);
+      headerRow.height = 36;
       headerRow.eachCell(cell => {
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF203864' } };
+        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF203864' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        cell.border    = { bottom: { style: 'thin', color: { argb: 'FF999999' } } };
       });
-      headerRow.height = 40;
 
-      const GREEN  = 'FFD9EAD3';
-      const YELLOW = 'FFFFF2CC';
+      ws.columns.forEach((col, i) => { col.width = COL_WIDTHS[i] || 14; });
 
       data.forEach(row => {
-        const hasMatch = row.bankCount > 0;
-
-        const mainValues = [
-          row.voen, row.reklamYayicisi, row.icazeNo, row.eqNomresi, row.eqTarixi,
-          row.eqEsas, row.eqEdv, row.eqTotal,
-          row.paidEsas > 0 ? row.paidEsas : '',
+        // Ana sətir
+        const mainRow = ws.addRow([
+          row.reklamYayicisi,
+          row.voen,
+          row.icazeNo,
+          row.eqTarixi,
+          row.eqNomresi,
+          row.eqEsas,
+          row.eqEdv,
           row.paidEsas > 0 ? row.esasTarix : '',
-          row.paidEsas > 0 ? row.esasQeyd  : '',
-          row.paidEdv  > 0 ? row.paidEdv   : '',
+          row.paidEsas > 0 ? row.paidEsas  : '',
           row.paidEdv  > 0 ? row.edvTarix  : '',
-          row.paidEdv  > 0 ? row.edvQeyd   : '',
-          row.paidTotal > 0 ? row.paidTotal : '',
-          row.qaliqEsas, row.qaliqEdv,
-          row.status,
-          hasMatch ? 'AI generated' : '',
-        ];
+          row.paidEdv  > 0 ? row.paidEdv   : '',
+          row.paidEsas > 0 ? row.esasQeyd  : (row.paidEdv > 0 ? row.edvQeyd : ''),
+        ]);
 
-        const mainRow = ws.addRow(mainValues);
-        if (hasMatch) {
+        if (row.hasMatch) {
           mainRow.eachCell(cell => {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
           });
         }
 
+        // Artıq ödəniş — əsas
         if (row.artiqEsas > 0.01) {
-          const artiqRow = ws.addRow([
-            '', '↳ Artıq ödəniş — Əsas hesab (Yayım haqqı yığımı)', '', '', '',
-            '', '', '',
-            row.paidEsas, row.esasTarix, row.esasQeyd,
-            '', '', '',
-            '', -row.artiqEsas, '',
-            'Artıq Ödəniş (Əsas)', 'AI generated',
+          const r = ws.addRow([
+            '↳ Artıq ödəniş (Yayım haqqı yığımı)', '', row.icazeNo, '', '',
+            '', '', row.esasTarix, row.artiqEsas, '', '', row.esasQeyd,
           ]);
-          artiqRow.eachCell(cell => {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: YELLOW } };
-            cell.font = { italic: true };
+          r.eachCell(cell => {
+            cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+            cell.font   = { italic: true, size: 10 };
           });
         }
 
+        // Artıq ödəniş — ƏDV
         if (row.artiqEdv > 0.01) {
-          const artiqRow = ws.addRow([
-            '', '↳ Artıq ödəniş — ƏDV hesab (ƏDV daxilolma)', '', '', '',
-            '', '', '',
-            '', '', '',
-            row.paidEdv, row.edvTarix, row.edvQeyd,
-            '', '', -row.artiqEdv,
-            'Artıq Ödəniş (ƏDV)', 'AI generated',
+          const r = ws.addRow([
+            '↳ Artıq ödəniş (ƏDV daxilolma)', '', row.icazeNo, '', '',
+            '', '', '', '', row.edvTarix, row.artiqEdv, row.edvQeyd,
           ]);
-          artiqRow.eachCell(cell => {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: YELLOW } };
-            cell.font = { italic: true };
+          r.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+            cell.font = { italic: true, size: 10 };
           });
         }
-      });
-
-      // Column widths
-      ws.columns.forEach((col, i) => {
-        col.width = [15, 35, 20, 20, 14, 18, 18, 14, 16, 16, 16, 14, 14, 14, 16, 14, 14, 20, 14][i] || 14;
       });
 
       const buffer = await wb.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = URL.createObjectURL(blob);
       a.download = `rekonsiliasiya_${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) { console.error(e); alert('Export xətası'); }
+    } catch (e) { console.error(e); alert('Export xətası: ' + e.message); }
     setLoading(false);
   };
 
@@ -121,9 +108,9 @@ export default function Reconciliation({ api }) {
       </div>
       <div className="empty-state" style={{ marginTop: 80 }}>
         <div className="es-icon">📊</div>
-        <p>Yalnız ödəniş tarixi olmayan EQ qeydləri götürülür, bank ilə uyğunlaşdırılır və Excel kimi yüklənir.</p>
+        <p>Ödəniş tarixi olmayan EQ qeydləri bank ilə uyğunlaşdırılır və Excel kimi yüklənir.</p>
         <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
-          🟢 Yaşıl — bank ilə uyğunlaşdırılan qeydlər &nbsp;·&nbsp; 🟡 Sarı — artıq ödəniş sətirləri
+          🟢 Yaşıl — bank ilə uyğunlaşdırılan &nbsp;·&nbsp; 🟡 Sarı — artıq ödəniş
         </p>
       </div>
     </div>
