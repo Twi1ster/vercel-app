@@ -25,12 +25,20 @@ module.exports = async (req, res) => {
   ]);
 
   const result = eqData.map(eq => {
-    const eqTotal = (eq.eqMeblegEsas || 0) + (eq.eqMeblegEdv || 0);
+    const eqEsas = eq.eqMeblegEsas || 0;
+    const eqEdv  = eq.eqMeblegEdv  || 0;
+    const eqTotal = eqEsas + eqEdv;
     const paidEsas = eq.odenisMeblegEsas || 0;
-    const paidEdv = eq.odenisMeblegEdv || 0;
+    const paidEdv  = eq.odenisMeblegEdv  || 0;
     const paidTotal = paidEsas + paidEdv;
+
+    const qaliqEsas = eqEsas - paidEsas;
+    const qaliqEdv  = eqEdv  - paidEdv;
     const qaliq = eqTotal - paidTotal;
-    const artiqOdenis = qaliq < -0.01 ? Math.abs(qaliq) : 0;
+
+    const artiqEsas = qaliqEsas < -0.01 ? Math.abs(qaliqEsas) : 0;
+    const artiqEdv  = qaliqEdv  < -0.01 ? Math.abs(qaliqEdv)  : 0;
+    const artiqOdenis = artiqEsas + artiqEdv;
 
     let status = 'Ödənilməyib';
     if (Math.abs(qaliq) < 0.01) status = 'Tam Ödənilmiş';
@@ -44,13 +52,17 @@ module.exports = async (req, res) => {
       icazeNo: eq.icazeNo || '',
       eqNomresi: eq.eqNomresi || '',
       eqTarixi: eq.eqTarixi || '',
-      eqMeblegEsas: eq.eqMeblegEsas || 0,
-      eqMeblegEdv: eq.eqMeblegEdv || 0,
+      eqMeblegEsas: eqEsas,
+      eqMeblegEdv: eqEdv,
       eqTotal,
       paidEsas,
       paidEdv,
       paidTotal,
+      qaliqEsas,
+      qaliqEdv,
       qaliq,
+      artiqEsas,
+      artiqEdv,
       artiqOdenis,
       artiqOdenisTarixi: artiqOdenis > 0 ? (eq.odenisTarixiEdv || eq.odenisTarixi || '') : '',
       status,

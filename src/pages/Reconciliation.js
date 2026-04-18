@@ -13,6 +13,7 @@ export default function Reconciliation({ api }) {
       const json = await res.json();
       const data = json.data || [];
 
+      const empty = { 'VÖEN':'','Reklam Yayıcısı':'','İcazə №':'','EQ Nömrəsi':'','EQ Tarixi':'','EQ Əsas (Yayım haqqı yığımı)':'','EQ ƏDV (ƏDV daxilolma)':'','EQ CƏMİ':'','Ödənilmiş (Əsas)':'','Ödənilmiş (ƏDV)':'','Ödənilmiş CƏMİ':'','Qalıq (Əsas)':'','Qalıq (ƏDV)':'','Status':'' };
       const rows = data.flatMap(row => {
         const main = {
           'VÖEN': row.voen,
@@ -20,29 +21,34 @@ export default function Reconciliation({ api }) {
           'İcazə №': row.icazeNo,
           'EQ Nömrəsi': row.eqNomresi,
           'EQ Tarixi': row.eqTarixi,
-          'EQ Əsas': row.eqMeblegEsas,
-          'EQ ƏDV': row.eqMeblegEdv,
+          'EQ Əsas (Yayım haqqı yığımı)': row.eqMeblegEsas,
+          'EQ ƏDV (ƏDV daxilolma)': row.eqMeblegEdv,
           'EQ CƏMİ': row.eqTotal,
           'Ödənilmiş (Əsas)': row.paidEsas,
           'Ödənilmiş (ƏDV)': row.paidEdv,
           'Ödənilmiş CƏMİ': row.paidTotal,
-          'Qalıq': row.qaliq,
+          'Qalıq (Əsas)': row.qaliqEsas,
+          'Qalıq (ƏDV)': row.qaliqEdv,
           'Status': row.status,
         };
-        if (row.artiqOdenis > 0) {
-          return [main, {
-            'VÖEN': '',
-            'Reklam Yayıcısı': '↳ Artıq ödəniş',
-            'İcazə №': '',
-            'EQ Nömrəsi': '',
+        const extra = [];
+        if (row.artiqEsas > 0.01) {
+          extra.push({ ...empty,
+            'Reklam Yayıcısı': '↳ Artıq ödəniş — Əsas hesab (Yayım haqqı yığımı)',
             'EQ Tarixi': row.artiqOdenisTarixi,
-            'EQ Əsas': '', 'EQ ƏDV': '', 'EQ CƏMİ': '',
-            'Ödənilmiş (Əsas)': '', 'Ödənilmiş (ƏDV)': '', 'Ödənilmiş CƏMİ': '',
-            'Qalıq': row.artiqOdenis,
-            'Status': 'Artıq Ödəniş',
-          }];
+            'Qalıq (Əsas)': -row.artiqEsas,
+            'Status': 'Artıq Ödəniş (Əsas)',
+          });
         }
-        return [main];
+        if (row.artiqEdv > 0.01) {
+          extra.push({ ...empty,
+            'Reklam Yayıcısı': '↳ Artıq ödəniş — ƏDV hesab (ƏDV daxilolma)',
+            'EQ Tarixi': row.artiqOdenisTarixi,
+            'Qalıq (ƏDV)': -row.artiqEdv,
+            'Status': 'Artıq Ödəniş (ƏDV)',
+          });
+        }
+        return [main, ...extra];
       });
 
       const ws = XLSX.utils.json_to_sheet(rows);
