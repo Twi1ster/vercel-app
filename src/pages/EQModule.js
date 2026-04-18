@@ -24,13 +24,9 @@ const parseNum = v => {
 };
 const parseDate = v => {
   if (!v) return '';
-  const n = Number(v);
-  if (!isNaN(n) && n > 30000 && n < 80000) {
-    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const yyyy = d.getUTCFullYear();
-    return `${dd}.${mm}.${yyyy}`;
+  const d = v instanceof Date ? v : null;
+  if (d) {
+    return `${String(d.getUTCDate()).padStart(2,'0')}.${String(d.getUTCMonth()+1).padStart(2,'0')}.${d.getUTCFullYear()}`;
   }
   return String(v);
 };
@@ -92,7 +88,7 @@ export default function EQModule({ api, onUpdate }) {
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true, cellDates: true });
       if (rawRows.length === 0) {
         showToast('Excel faylı boşdur və ya header sətri tapılmadı', true);
         setLoading(false);
