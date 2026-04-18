@@ -2,7 +2,6 @@ const connectDB = require('../_db');
 const { BankHesab } = require('../_models');
 const XLSX = require('xlsx');
 
-export const config = { api: { bodyParser: false } };
 
 async function parseMultipart(req) {
   return new Promise((resolve, reject) => {
