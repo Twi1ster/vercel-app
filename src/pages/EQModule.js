@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 const FIELDS = [
-  { key: 'voen', label: 'VOEN', type: 'text' },
-  { key: 'icazeNo', label: 'İcazə №', type: 'text' },
+  { key: 'reklamYayicisi', label: 'Reklam Yayıcısının Adı', type: 'text', full: true },
+  { key: 'voen', label: 'VÖEN', type: 'text' },
+  { key: 'icazeNo', label: 'İcazə', type: 'text' },
   { key: 'eqTarixi', label: 'EQ Tarixi', type: 'text', placeholder: 'dd.mm.yyyy' },
+  { key: 'eqNomresi', label: 'EQ Nömrəsi', type: 'text' },
   { key: 'eqMeblegEsas', label: 'EQ Məbləği (Əsas)', type: 'number' },
   { key: 'eqMeblegEdv', label: 'EQ Məbləği (ƏDV)', type: 'number' },
   { key: 'odenisTarixi', label: 'Ödəniş Tarixi', type: 'text', placeholder: 'dd.mm.yyyy' },
-  { key: 'odenisTarixiEsas', label: 'Ödəniş Tarixi (Əsas)', type: 'text', placeholder: 'dd.mm.yyyy' },
+  { key: 'odenisMeblegEsas', label: 'Ödəniş Məbləği (Əsas)', type: 'number' },
   { key: 'odenisTarixiEdv', label: 'Ödəniş Tarixi (ƏDV)', type: 'text', placeholder: 'dd.mm.yyyy' },
   { key: 'odenisMeblegEdv', label: 'Ödəniş Məbləği (ƏDV)', type: 'number' },
   { key: 'qeyd', label: 'Qeyd', type: 'textarea', full: true },
@@ -68,12 +70,39 @@ export default function EQModule({ api, onUpdate }) {
   const handleFile = async (file) => {
     if (!file) return;
     setLoading(true);
-    const fd = new FormData(); fd.append('file', file);
     try {
-      const r = await fetch(`${api}/api/eq/import`, { method: 'POST', body: fd });
-      const d = await r.json();
+      const XLSX = await import('xlsx');
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const docs = rows.map(row => ({
+        reklamYayicisi: String(row['Reklam yayıcısının adı'] || ''),
+        voen: String(row['VÖEN'] || row['VOEN'] || row['voen'] || ''),
+        icazeNo: String(row['İcazə'] || row['İcazə №'] || row['icazeNo'] || ''),
+        eqTarixi: String(row['Elektron qaimənin tarixi'] || row['EQ tarixi'] || ''),
+        eqNomresi: String(row['Elektron qaimənin nömrəsi'] || row['EQ nömrəsi'] || ''),
+        eqMeblegEsas: parseFloat(row['EQ məbləği(əsas)'] || row['EQ məbləği (əsas)'] || 0) || 0,
+        eqMeblegEdv: parseFloat(row['EQ məbləği(ƏDV)'] || row['EQ məbləği (ƏDV)'] || 0) || 0,
+        odenisTarixi: String(row['Ödəniş tarixi'] || ''),
+        odenisMeblegEsas: parseFloat(row['Ödəniş məbləği(Əsas)'] || row['Ödəniş məbləği (Əsas)'] || 0) || 0,
+        odenisTarixiEdv: String(row['Ödəniş tarixi(ƏDV)'] || row['Ödəniş tarixi (ƏDV)'] || ''),
+        odenisMeblegEdv: parseFloat(row['Ödəniş məbləği(ƏDV)'] || row['Ödəniş məbləği (ƏDV)'] || 0) || 0,
+        qeyd: String(row['Qeyd'] || row['qeyd'] || ''),
+      }));
+      const CHUNK = 500;
+      let imported = 0;
+      for (let i = 0; i < docs.length; i += CHUNK) {
+        const r = await fetch(`${api}/api/eq/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(docs.slice(i, i + CHUNK)),
+        });
+        const d = await r.json();
+        imported += d.imported || 0;
+      }
       setImportModal(false); load(1, ''); onUpdate();
-      showToast(`${d.imported} qeyd import edildi`);
+      showToast(`${imported} qeyd import edildi`);
     } catch { showToast('Import xətası', true); }
     setLoading(false);
   };
@@ -97,28 +126,32 @@ export default function EQModule({ api, onUpdate }) {
         <table>
           <thead>
             <tr>
-              <th>#</th><th>VOEN</th><th>İcazə №</th><th>EQ Tarixi</th>
+              <th>#</th><th>Reklam Yayıcısı</th><th>VÖEN</th><th>İcazə</th>
+              <th>EQ Tarixi</th><th>EQ Nömrəsi</th>
               <th>EQ Məbl.(Əsas)</th><th>EQ Məbl.(ƏDV)</th>
-              <th>Öd. Tarixi</th><th>Öd. Tarixi (Əsas)</th><th>Öd. Tarixi (ƏDV)</th>
-              <th>Öd. Məbl.(ƏDV)</th><th>Qeyd</th><th></th>
+              <th>Öd. Tarixi</th><th>Öd. Məbl.(Əsas)</th>
+              <th>Öd. Tarixi(ƏDV)</th><th>Öd. Məbl.(ƏDV)</th>
+              <th>Qeyd</th><th></th>
             </tr>
           </thead>
           <tbody>
             {data.length === 0 && (
-              <tr><td colSpan={12}>
+              <tr><td colSpan={14}>
                 <div className="empty-state"><div className="es-icon">📄</div>Qeyd tapılmadı</div>
               </td></tr>
             )}
             {data.map((row, i) => (
               <tr key={row._id}>
                 <td className="num" style={{ color: 'var(--text3)' }}>{(page - 1) * 50 + i + 1}</td>
+                <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.reklamYayicisi}</td>
                 <td style={{ color: 'var(--accent)', fontWeight: 600 }}>{row.voen}</td>
                 <td>{row.icazeNo}</td>
                 <td>{row.eqTarixi}</td>
+                <td>{row.eqNomresi}</td>
                 <td className="num num-pos">{fmt(row.eqMeblegEsas)}</td>
                 <td className="num num-pos">{fmt(row.eqMeblegEdv)}</td>
                 <td>{row.odenisTarixi}</td>
-                <td>{row.odenisTarixiEsas}</td>
+                <td className="num num-pos">{fmt(row.odenisMeblegEsas)}</td>
                 <td>{row.odenisTarixiEdv}</td>
                 <td className="num num-pos">{fmt(row.odenisMeblegEdv)}</td>
                 <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.qeyd}</td>

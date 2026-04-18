@@ -83,14 +83,19 @@ export default function BankModule({ api, onUpdate }) {
         hesabatUzreTeyinat: String(row['HESABAT ÜZRƏ TƏYİNAT'] || row['Hesabat üzrə Təyinat'] || ''),
         voen: String(row['VÖEN'] || row['VOEN'] || row['voen'] || ''),
       }));
-      const r = await fetch(`${api}/api/bank/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(docs),
-      });
-      const d = await r.json();
+      const CHUNK = 500;
+      let imported = 0;
+      for (let i = 0; i < docs.length; i += CHUNK) {
+        const r = await fetch(`${api}/api/bank/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(docs.slice(i, i + CHUNK)),
+        });
+        const d = await r.json();
+        imported += d.imported || 0;
+      }
       setImportModal(false); load(1, ''); onUpdate();
-      showToast(`${d.imported} qeyd import edildi`);
+      showToast(`${imported} qeyd import edildi`);
     } catch { showToast('Import xətası', true); }
     setLoading(false);
   };
