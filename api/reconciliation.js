@@ -6,7 +6,7 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).end();
 
   await connectDB();
-  const { voen = '', search = '' } = req.query;
+  const { voen = '', search = '', page = 1, limit = 100 } = req.query;
 
   const filter = {};
   if (voen) filter.voen = { $regex: voen, $options: 'i' };
@@ -18,7 +18,11 @@ module.exports = async (req, res) => {
     ];
   }
 
-  const eqData = await ElektronQaime.find(filter).sort({ eqTarixi: -1 }).lean();
+  const skip = (Number(page) - 1) * Number(limit);
+  const [eqData, total] = await Promise.all([
+    ElektronQaime.find(filter).sort({ eqTarixi: -1 }).skip(skip).limit(Number(limit)).lean(),
+    ElektronQaime.countDocuments(filter),
+  ]);
 
   const result = eqData.map(eq => {
     const eqTotal = (eq.eqMeblegEsas || 0) + (eq.eqMeblegEdv || 0);
@@ -53,5 +57,5 @@ module.exports = async (req, res) => {
     };
   });
 
-  res.json(result);
+  res.json({ data: result, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
 };
