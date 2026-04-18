@@ -6,7 +6,8 @@ if (!cached) cached = global.mongoose = { conn: null, promise: null };
 async function connectDB() {
   if (cached.conn) return cached.conn;
   if (!cached.promise) {
-    cached.promise = mongoose.connect(process.env.MONGO_URI, {
+    const uri = process.env.MONGO_URI || 'mongodb+srv://rzayevsamir223_db_user:Samir123456789@cluster0.d0vschl.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+    cached.promise = mongoose.connect(uri, {
       bufferCommands: false,
     });
   }
