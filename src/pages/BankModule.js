@@ -16,7 +16,14 @@ const empty = () => Object.fromEntries(FIELDS.map(f => [f.key, '']));
 const fmt = n => Number(n || 0).toLocaleString('az-AZ', { minimumFractionDigits: 2 });
 const parseNum = v => {
   if (typeof v === 'number') return v;
-  const s = String(v || '').replace(/[\s\u00a0]/g, '').replace(',', '.');
+  let s = String(v || '').replace(/[\s\u00a0]/g, '');
+  if (!s) return 0;
+  // 41.975 və ya 1.234.567 — nöqtə minlik ayırıcıdır
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else {
+    s = s.replace(',', '.');
+  }
   return parseFloat(s) || 0;
 };
 const parseDate = v => {
