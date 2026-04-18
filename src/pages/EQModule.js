@@ -19,7 +19,7 @@ const empty = () => Object.fromEntries(FIELDS.map(f => [f.key, '']));
 const fmt = n => Number(n || 0).toLocaleString('az-AZ', { minimumFractionDigits: 2 });
 const parseNum = v => {
   if (typeof v === 'number') return v;
-  const s = String(v || '').replace(/\s/g, '').replace(',', '.');
+  const s = String(v || '').replace(/[\s\u00a0]/g, '').replace(',', '.');
   return parseFloat(s) || 0;
 };
 
@@ -80,7 +80,7 @@ export default function EQModule({ api, onUpdate }) {
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
       if (rawRows.length === 0) {
         showToast('Excel faylı boşdur və ya header sətri tapılmadı', true);
         setLoading(false);
