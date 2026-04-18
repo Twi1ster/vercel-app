@@ -80,7 +80,7 @@ export default function EQModule({ api, onUpdate }) {
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
       if (rawRows.length === 0) {
         showToast('Excel faylı boşdur və ya header sətri tapılmadı', true);
         setLoading(false);
