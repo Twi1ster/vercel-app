@@ -1,0 +1,205 @@
+import React, { useState, useEffect, useRef } from 'react';
+
+const FIELDS = [
+  { key: 'voen', label: 'VOEN', type: 'text' },
+  { key: 'icazeNo', label: 'İcazə №', type: 'text' },
+  { key: 'eqTarixi', label: 'EQ Tarixi', type: 'text', placeholder: 'dd.mm.yyyy' },
+  { key: 'eqMeblegEsas', label: 'EQ Məbləği (Əsas)', type: 'number' },
+  { key: 'eqMeblegEdv', label: 'EQ Məbləği (ƏDV)', type: 'number' },
+  { key: 'odenisTarixi', label: 'Ödəniş Tarixi', type: 'text', placeholder: 'dd.mm.yyyy' },
+  { key: 'odenisTarixiEsas', label: 'Ödəniş Tarixi (Əsas)', type: 'text', placeholder: 'dd.mm.yyyy' },
+  { key: 'odenisTarixiEdv', label: 'Ödəniş Tarixi (ƏDV)', type: 'text', placeholder: 'dd.mm.yyyy' },
+  { key: 'odenisMeblegEdv', label: 'Ödəniş Məbləği (ƏDV)', type: 'number' },
+  { key: 'qeyd', label: 'Qeyd', type: 'textarea', full: true },
+];
+
+const empty = () => Object.fromEntries(FIELDS.map(f => [f.key, '']));
+const fmt = n => Number(n || 0).toLocaleString('az-AZ', { minimumFractionDigits: 2 });
+
+export default function EQModule({ api, onUpdate }) {
+  const [data, setData] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [search, setSearch] = useState('');
+  const [modal, setModal] = useState(false);
+  const [importModal, setImportModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(empty());
+  const [toast, setToast] = useState(null);
+  const [drag, setDrag] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const fileRef = useRef();
+
+  const showToast = (msg, err = false) => {
+    setToast({ msg, err });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const load = async (p = page, s = search) => {
+    try {
+      const r = await fetch(`${api}/api/eq?page=${p}&limit=50&search=${encodeURIComponent(s)}`);
+      const d = await r.json();
+      setData(d.data); setTotal(d.total); setPages(d.pages);
+    } catch { showToast('Yüklənmə xətası', true); }
+  };
+
+  useEffect(() => { load(1, search); }, [search]);
+
+  const openAdd = () => { setEditing(null); setForm(empty()); setModal(true); };
+  const openEdit = (row) => { setEditing(row._id); setForm({ ...row }); setModal(true); };
+
+  const save = async () => {
+    try {
+      const url = editing ? `${api}/api/eq/${editing}` : `${api}/api/eq`;
+      const method = editing ? 'PUT' : 'POST';
+      await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      setModal(false); load(page, search); onUpdate();
+      showToast(editing ? 'Yeniləndi' : 'Əlavə edildi');
+    } catch { showToast('Xəta', true); }
+  };
+
+  const del = async (id) => {
+    if (!window.confirm('Silinsin?')) return;
+    await fetch(`${api}/api/eq/${id}`, { method: 'DELETE' });
+    load(page, search); onUpdate(); showToast('Silindi');
+  };
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setLoading(true);
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const r = await fetch(`${api}/api/eq/import`, { method: 'POST', body: fd });
+      const d = await r.json();
+      setImportModal(false); load(1, ''); onUpdate();
+      showToast(`${d.imported} qeyd import edildi`);
+    } catch { showToast('Import xətası', true); }
+    setLoading(false);
+  };
+
+  const exportXlsx = () => { window.open(`${api}/api/eq/export`, '_blank'); };
+
+  return (
+    <div>
+      <div className="module-header">
+        <div className="module-title"><span>01</span> — Elektron Qaime</div>
+        <div className="toolbar">
+          <input className="search-input" placeholder="Axtar: VOEN, İcazə №, Qeyd..." value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }} />
+          <button className="btn btn-secondary" onClick={() => setImportModal(true)}>⬆ Import</button>
+          <button className="btn btn-secondary" onClick={exportXlsx}>⬇ Export</button>
+          <button className="btn btn-primary" onClick={openAdd}>+ Əlavə Et</button>
+        </div>
+      </div>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>VOEN</th><th>İcazə №</th><th>EQ Tarixi</th>
+              <th>EQ Məbl.(Əsas)</th><th>EQ Məbl.(ƏDV)</th>
+              <th>Öd. Tarixi</th><th>Öd. Tarixi (Əsas)</th><th>Öd. Tarixi (ƏDV)</th>
+              <th>Öd. Məbl.(ƏDV)</th><th>Qeyd</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.length === 0 && (
+              <tr><td colSpan={12}>
+                <div className="empty-state"><div className="es-icon">📄</div>Qeyd tapılmadı</div>
+              </td></tr>
+            )}
+            {data.map((row, i) => (
+              <tr key={row._id}>
+                <td className="num" style={{ color: 'var(--text3)' }}>{(page - 1) * 50 + i + 1}</td>
+                <td style={{ color: 'var(--accent)', fontWeight: 600 }}>{row.voen}</td>
+                <td>{row.icazeNo}</td>
+                <td>{row.eqTarixi}</td>
+                <td className="num num-pos">{fmt(row.eqMeblegEsas)}</td>
+                <td className="num num-pos">{fmt(row.eqMeblegEdv)}</td>
+                <td>{row.odenisTarixi}</td>
+                <td>{row.odenisTarixiEsas}</td>
+                <td>{row.odenisTarixiEdv}</td>
+                <td className="num num-pos">{fmt(row.odenisMeblegEdv)}</td>
+                <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.qeyd}</td>
+                <td>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => openEdit(row)}>✏</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => del(row._id)}>✕</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="pagination">
+        <span>Cəmi: {total} qeyd</span>
+        <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => { setPage(p => p - 1); load(page - 1, search); }}>← Əvvəl</button>
+        <span>{page} / {pages}</span>
+        <button className="btn btn-secondary btn-sm" disabled={page >= pages} onClick={() => { setPage(p => p + 1); load(page + 1, search); }}>Sonra →</button>
+      </div>
+
+      {/* ADD/EDIT MODAL */}
+      {modal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(false)}>
+          <div className="modal">
+            <div className="modal-header">
+              <span className="modal-title">{editing ? 'Redaktə Et' : 'Yeni EQ'}</span>
+              <button className="modal-close" onClick={() => setModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-grid">
+                {FIELDS.map(f => (
+                  <div className={`form-group ${f.full ? 'full' : ''}`} key={f.key}>
+                    <label className="form-label">{f.label}</label>
+                    {f.type === 'textarea'
+                      ? <textarea value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} rows={3} />
+                      : <input type={f.type} placeholder={f.placeholder || ''} value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} />
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setModal(false)}>Ləğv Et</button>
+              <button className="btn btn-primary" onClick={save}>Yadda Saxla</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IMPORT MODAL */}
+      {importModal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setImportModal(false)}>
+          <div className="modal">
+            <div className="modal-header">
+              <span className="modal-title">Excel Import — EQ</span>
+              <button className="modal-close" onClick={() => setImportModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className={`import-zone ${drag ? 'drag' : ''}`}
+                onDragOver={e => { e.preventDefault(); setDrag(true); }}
+                onDragLeave={() => setDrag(false)}
+                onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]); }}
+                onClick={() => fileRef.current.click()}>
+                <div className="iz-title">📊 Excel faylı buraya sürükləyin</div>
+                <p>və ya klikləyin seçin · .xlsx, .xls</p>
+                {loading && <p style={{ color: 'var(--accent)', marginTop: 8 }}>Yüklənir...</p>}
+              </div>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => handleFile(e.target.files[0])} />
+              <div style={{ marginTop: 16, background: 'var(--bg3)', padding: '12px 16px', fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text3)', lineHeight: 2 }}>
+                <div style={{ color: 'var(--accent)', marginBottom: 4, fontSize: 10, letterSpacing: 1 }}>EXCEL HEADER ADLARI:</div>
+                VOEN · İcazə № · EQ tarixi · EQ məbləği (əsas) · EQ məbləği (ƏDV)<br />
+                Ödəniş tarixi · Ödəniş tarixi (əsas) · Ödəniş tarixi (ƏDV) · Ödəniş məbləği (ƏDV) · Qeyd
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div className={`toast ${toast.err ? 'err' : ''}`}>{toast.msg}</div>}
+    </div>
+  );
+}
