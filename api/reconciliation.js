@@ -48,6 +48,10 @@ module.exports = async (req, res) => {
     const esasBank = personBank.filter(b => isEsas(b.hesabatUzreTeyinat)).sort((a, b) => cmpDate(a.tarix, b.tarix));
     const edvBank  = personBank.filter(b => isEdv(b.hesabatUzreTeyinat)).sort((a, b) => cmpDate(a.tarix, b.tarix));
 
+    const totalPaidBank = esasBank.reduce((s, b) => s + (b.medaxil || 0), 0)
+                        + edvBank.reduce((s, b) => s + (b.medaxil || 0), 0);
+    const totalEqUnpaid = unpaidSorted.reduce((s, e) => s + (e.eqMeblegEsas || 0) + (e.eqMeblegEdv || 0), 0);
+
     let esasAvail = esasBank.reduce((s, b) => s + (b.medaxil || 0), 0);
     let edvAvail  = edvBank.reduce((s, b)  => s + (b.medaxil || 0), 0);
 
@@ -73,8 +77,13 @@ module.exports = async (req, res) => {
 
     const leftover = esasAvail + edvAvail;
     const artiq = leftover > 0.01 ? leftover : 0;
+    // Borc: ödəniş olub amma EQ-ləri tam örtməyib
+    const borc = totalPaidBank > 0.01 && totalPaidBank + 0.01 < totalEqUnpaid
+      ? totalEqUnpaid - totalPaidBank
+      : 0;
     const lastBank = personBank.slice().sort((a, b) => cmpDate(b.tarix, a.tarix))[0];
     const artiqTarix = artiq > 0 && lastBank ? lastBank.tarix : '';
+    const borcTarix  = borc  > 0 && lastBank ? lastBank.tarix : '';
 
     // EQ-ları orijinal ardıcıllıqla yaz
     const rows = eqs.map(eq => {
@@ -121,13 +130,15 @@ module.exports = async (req, res) => {
       };
     });
 
-    // Artıq ödəniş sətri adamın sonuncu EQ-sindən sonra bir dəfə
+    // Artıq/borc sətri adamın sonuncu EQ-sindən sonra bir dəfə
     rows.forEach((r, idx) => {
       const isLast = idx === rows.length - 1;
       result.push({
         ...r,
         artiq:      isLast ? artiq : 0,
         artiqTarix: isLast ? artiqTarix : '',
+        borc:       isLast ? borc : 0,
+        borcTarix:  isLast ? borcTarix : '',
       });
     });
   });

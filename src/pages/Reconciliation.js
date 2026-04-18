@@ -72,6 +72,18 @@ export default function Reconciliation({ api }) {
             cell.font = { italic: true, size: 10 };
           });
         }
+
+        // Borc — tək sətir (qırmızı)
+        if (row.borc > 0.01) {
+          const r = ws.addRow([
+            '↳ Borc', '', row.icazeNo, '', '',
+            row.borc, '', row.borcTarix, '', '', '', '',
+          ]);
+          r.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4CCCC' } };
+            cell.font = { italic: true, size: 10, color: { argb: 'FF990000' } };
+          });
+        }
       });
 
       const buffer = await wb.xlsx.writeBuffer();
@@ -98,7 +110,7 @@ export default function Reconciliation({ api }) {
         <div className="es-icon">📊</div>
         <p>Ödəniş tarixi olmayan EQ qeydləri bank ilə uyğunlaşdırılır və Excel kimi yüklənir.</p>
         <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
-          🟢 Yaşıl — bank ilə uyğunlaşdırılan &nbsp;·&nbsp; 🟡 Sarı — artıq ödəniş
+          🟢 Yaşıl — bank ilə uyğunlaşdırılan &nbsp;·&nbsp; 🟡 Sarı — artıq ödəniş &nbsp;·&nbsp; 🔴 Qırmızı — borc
         </p>
       </div>
     </div>
