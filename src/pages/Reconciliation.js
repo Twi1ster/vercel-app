@@ -61,23 +61,11 @@ export default function Reconciliation({ api }) {
           });
         }
 
-        // Artıq ödəniş — əsas
-        if (row.artiqEsas > 0.01) {
+        // Artıq ödəniş — tək sətir
+        if (row.artiq > 0.01) {
           const r = ws.addRow([
-            '↳ Artıq ödəniş (Yayım haqqı yığımı)', '', row.icazeNo, '', '',
-            '', '', row.esasTarix, row.artiqEsas, '', '', row.esasQeyd,
-          ]);
-          r.eachCell(cell => {
-            cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
-            cell.font   = { italic: true, size: 10 };
-          });
-        }
-
-        // Artıq ödəniş — ƏDV
-        if (row.artiqEdv > 0.01) {
-          const r = ws.addRow([
-            '↳ Artıq ödəniş (ƏDV daxilolma)', '', row.icazeNo, '', '',
-            '', '', '', '', row.edvTarix, row.artiqEdv, row.edvQeyd,
+            '↳ Artıq ödəniş', '', row.icazeNo, '', '',
+            '', '', row.artiqTarix, row.artiq, '', '', '',
           ]);
           r.eachCell(cell => {
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };

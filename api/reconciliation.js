@@ -52,8 +52,12 @@ module.exports = async (req, res) => {
     const eqEsas = eq.eqMeblegEsas || 0;
     const eqEdv  = eq.eqMeblegEdv  || 0;
 
-    const artiqEsas = paidEsas > eqEsas + 0.01 ? paidEsas - eqEsas : 0;
-    const artiqEdv  = paidEdv  > eqEdv  + 0.01 ? paidEdv  - eqEdv  : 0;
+    const eqTotal   = eqEsas + eqEdv;
+    const paidTotal = paidEsas + paidEdv;
+    const artiq     = paidTotal > eqTotal + 0.01 ? paidTotal - eqTotal : 0;
+    const artiqTarix = artiq > 0
+      ? (edvTarix || esasTarix)
+      : '';
 
     return {
       reklamYayicisi: eq.reklamYayicisi || '',
@@ -61,11 +65,10 @@ module.exports = async (req, res) => {
       icazeNo:        icaze,
       eqTarixi:       eq.eqTarixi || '',
       eqNomresi:      eq.eqNomresi || '',
-      eqEsas,
-      eqEdv,
-      paidEsas,    esasTarix, esasQeyd,
-      paidEdv,     edvTarix,  edvQeyd,
-      artiqEsas,   artiqEdv,
+      eqEsas, eqEdv,
+      paidEsas, esasTarix, esasQeyd,
+      paidEdv,  edvTarix,  edvQeyd,
+      artiq, artiqTarix,
       hasMatch: matched.length > 0,
     };
   });
