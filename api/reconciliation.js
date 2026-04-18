@@ -52,6 +52,8 @@ module.exports = async (req, res) => {
 
     const esasTarix = esasPayments.length ? esasPayments[esasPayments.length - 1].tarix : '';
     const edvTarix  = edvPayments.length  ? edvPayments[edvPayments.length   - 1].tarix : '';
+    const esasQeyd  = esasPayments.map(b => b.qeyd).filter(Boolean).join(', ');
+    const edvQeyd   = edvPayments.map(b  => b.qeyd).filter(Boolean).join(', ');
 
     const eqEsas = eq.eqMeblegEsas || 0;
     const eqEdv  = eq.eqMeblegEdv  || 0;
@@ -86,6 +88,7 @@ module.exports = async (req, res) => {
       paidTotal,
       qaliqEsas, qaliqEdv, qaliq,
       artiqEsas, artiqEdv, artiqOdenis,
+      esasQeyd, edvQeyd,
       status,
       bankCount: matched.length,
     };

@@ -16,8 +16,8 @@ export default function Reconciliation({ api }) {
       const empty = {
         'VÖEN':'','Reklam Yayıcısı':'','İcazə №':'','EQ Nömrəsi':'','EQ Tarixi':'',
         'EQ Əsas (Yayım haqqı yığımı)':'','EQ ƏDV (ƏDV daxilolma)':'','EQ CƏMİ':'',
-        'Ödənilmiş (Əsas)':'','Ödəniş Tarixi (Əsas)':'',
-        'Ödənilmiş (ƏDV)':'','Ödəniş Tarixi (ƏDV)':'',
+        'Ödənilmiş (Əsas)':'','Ödəniş Tarixi (Əsas)':'','Qeyd (Əsas)':'',
+        'Ödənilmiş (ƏDV)':'','Ödəniş Tarixi (ƏDV)':'','Qeyd (ƏDV)':'',
         'Ödənilmiş CƏMİ':'','Qalıq (Əsas)':'','Qalıq (ƏDV)':'','Status':'',
       };
       const rows = data.flatMap(row => {
@@ -30,21 +30,24 @@ export default function Reconciliation({ api }) {
           'EQ Əsas (Yayım haqqı yığımı)': row.eqEsas,
           'EQ ƏDV (ƏDV daxilolma)': row.eqEdv,
           'EQ CƏMİ': row.eqTotal,
-          'Ödənilmiş (Əsas)': row.paidEsas || '',
-          'Ödəniş Tarixi (Əsas)': row.paidEsas > 0 ? row.esasTarix : '',
-          'Ödənilmiş (ƏDV)': row.paidEdv || '',
-          'Ödəniş Tarixi (ƏDV)': row.paidEdv > 0 ? row.edvTarix : '',
-          'Ödənilmiş CƏMİ': row.paidTotal || '',
+          'Ödənilmiş (Əsas)':      row.paidEsas > 0 ? row.paidEsas : '',
+          'Ödəniş Tarixi (Əsas)':  row.paidEsas > 0 ? row.esasTarix : '',
+          'Qeyd (Əsas)':           row.paidEsas > 0 ? row.esasQeyd : '',
+          'Ödənilmiş (ƏDV)':       row.paidEdv  > 0 ? row.paidEdv  : '',
+          'Ödəniş Tarixi (ƏDV)':   row.paidEdv  > 0 ? row.edvTarix  : '',
+          'Qeyd (ƏDV)':            row.paidEdv  > 0 ? row.edvQeyd   : '',
+          'Ödənilmiş CƏMİ': row.paidTotal > 0 ? row.paidTotal : '',
           'Qalıq (Əsas)': row.qaliqEsas,
-          'Qalıq (ƏDV)': row.qaliqEdv,
+          'Qalıq (ƏDV)':  row.qaliqEdv,
           'Status': row.status,
         };
         const extra = [];
         if (row.artiqEsas > 0.01) {
           extra.push({ ...empty,
             'Reklam Yayıcısı': '↳ Artıq ödəniş — Əsas hesab (Yayım haqqı yığımı)',
-            'Ödəniş Tarixi (Əsas)': row.esasTarix,
             'Ödənilmiş (Əsas)': row.paidEsas,
+            'Ödəniş Tarixi (Əsas)': row.esasTarix,
+            'Qeyd (Əsas)': row.esasQeyd,
             'Qalıq (Əsas)': -row.artiqEsas,
             'Status': 'Artıq Ödəniş (Əsas)',
           });
@@ -52,8 +55,9 @@ export default function Reconciliation({ api }) {
         if (row.artiqEdv > 0.01) {
           extra.push({ ...empty,
             'Reklam Yayıcısı': '↳ Artıq ödəniş — ƏDV hesab (ƏDV daxilolma)',
-            'Ödəniş Tarixi (ƏDV)': row.edvTarix,
             'Ödənilmiş (ƏDV)': row.paidEdv,
+            'Ödəniş Tarixi (ƏDV)': row.edvTarix,
+            'Qeyd (ƏDV)': row.edvQeyd,
             'Qalıq (ƏDV)': -row.artiqEdv,
             'Status': 'Artıq Ödəniş (ƏDV)',
           });
