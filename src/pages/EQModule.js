@@ -75,14 +75,15 @@ export default function EQModule({ api, onUpdate }) {
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-      if (rows.length === 0) {
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      if (rawRows.length === 0) {
         showToast('Excel faylı boşdur və ya header sətri tapılmadı', true);
         setLoading(false);
         return;
       }
-      const detectedHeaders = Object.keys(rows[0]);
-      console.log('Excel headers:', detectedHeaders);
+      const rows = rawRows.map(row =>
+        Object.fromEntries(Object.entries(row).map(([k, v]) => [k.trim(), typeof v === 'string' ? v.trim() : v]))
+      );
       const docs = rows.map(row => ({
         reklamYayicisi: String(row['Reklam yayıcısının adı'] || ''),
         voen: String(row['VÖEN'] || row['VOEN'] || row['voen'] || ''),

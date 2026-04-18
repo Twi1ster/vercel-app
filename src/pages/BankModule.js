@@ -71,7 +71,10 @@ export default function BankModule({ api, onUpdate }) {
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      const rows = rawRows.map(row =>
+        Object.fromEntries(Object.entries(row).map(([k, v]) => [k.trim(), typeof v === 'string' ? v.trim() : v]))
+      );
       const docs = rows.map(row => ({
         bankHesab: String(row['Bank / hesab'] || row['Bank/Hesab'] || ''),
         tarix: String(row['Tarix'] || row['tarix'] || ''),
