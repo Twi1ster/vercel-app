@@ -17,6 +17,11 @@ const FIELDS = [
 
 const empty = () => Object.fromEntries(FIELDS.map(f => [f.key, '']));
 const fmt = n => Number(n || 0).toLocaleString('az-AZ', { minimumFractionDigits: 2 });
+const parseNum = v => {
+  if (typeof v === 'number') return v;
+  const s = String(v || '').replace(/\s/g, '').replace(',', '.');
+  return parseFloat(s) || 0;
+};
 
 export default function EQModule({ api, onUpdate }) {
   const [data, setData] = useState([]);
@@ -90,12 +95,12 @@ export default function EQModule({ api, onUpdate }) {
         icazeNo: String(row['İcazə'] || row['İcazə №'] || row['icazeNo'] || ''),
         eqTarixi: String(row['Elektron qaimənin tarixi'] || row['EQ tarixi'] || ''),
         eqNomresi: String(row['Elektron qaimənin nömrəsi'] || row['EQ nömrəsi'] || ''),
-        eqMeblegEsas: parseFloat(row['EQ məbləği(əsas)'] || row['EQ məbləği (əsas)'] || 0) || 0,
-        eqMeblegEdv: parseFloat(row['EQ məbləği(ƏDV)'] || row['EQ məbləği (ƏDV)'] || 0) || 0,
+        eqMeblegEsas: parseNum(row['EQ məbləği(əsas)'] ?? row['EQ məbləği (əsas)']),
+        eqMeblegEdv: parseNum(row['EQ məbləği(ƏDV)'] ?? row['EQ məbləği (ƏDV)']),
         odenisTarixi: String(row['Ödəniş tarixi'] || ''),
-        odenisMeblegEsas: parseFloat(row['Ödəniş məbləği(Əsas)'] || row['Ödəniş məbləği (Əsas)'] || 0) || 0,
-        odenisTarixiEdv: String(row['Ödəniş tarixi(ƏDV)'] || row['Ödəniş tarixi (ƏDV)'] || ''),
-        odenisMeblegEdv: parseFloat(row['Ödəniş məbləği(ƏDV)'] || row['Ödəniş məbləği (ƏDV)'] || 0) || 0,
+        odenisMeblegEsas: parseNum(row['Ödəniş məbləği(Əsas)'] ?? row['Ödəniş məbləği (Əsas)']),
+        odenisTarixiEdv: String(row['Ödəniş tarixi(ƏDV)'] ?? row['Ödəniş tarixi (ƏDV)'] ?? ''),
+        odenisMeblegEdv: parseNum(row['Ödəniş məbləği(ƏDV)'] ?? row['Ödəniş məbləği (ƏDV)']),
         qeyd: String(row['Qeyd'] || row['qeyd'] || ''),
       }));
       if (docs.length === 0) {

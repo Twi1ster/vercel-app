@@ -14,6 +14,11 @@ const FIELDS = [
 
 const empty = () => Object.fromEntries(FIELDS.map(f => [f.key, '']));
 const fmt = n => Number(n || 0).toLocaleString('az-AZ', { minimumFractionDigits: 2 });
+const parseNum = v => {
+  if (typeof v === 'number') return v;
+  const s = String(v || '').replace(/\s/g, '').replace(',', '.');
+  return parseFloat(s) || 0;
+};
 
 export default function BankModule({ api, onUpdate }) {
   const [data, setData] = useState([]);
@@ -79,8 +84,8 @@ export default function BankModule({ api, onUpdate }) {
         bankHesab: String(row['Bank / hesab'] || row['Bank/Hesab'] || ''),
         tarix: String(row['Tarix'] || row['tarix'] || ''),
         odeyiciVesait: String(row['Ödəyici / Vəsaiti alan'] || row['Ödəyici/Vasitə'] || ''),
-        medaxil: parseFloat(row['Mədaxil'] || row['MəDaxil'] || 0) || 0,
-        mexaric: parseFloat(row['Məxaric'] || 0) || 0,
+        medaxil: parseNum(row['Mədaxil'] ?? row['MəDaxil']),
+        mexaric: parseNum(row['Məxaric']),
         qeyd: String(row['Qeyd'] || row['qeyd'] || ''),
         muracietNomresiEqfNomresi: String(row['Müraciət nömrəsi (mədaxil)/ EQF nömrəsi (məxaric)'] || row['Müraciət №'] || ''),
         hesabatUzreTeyinat: String(row['HESABAT ÜZRƏ TƏYİNAT'] || row['Hesabat üzrə Təyinat'] || ''),
