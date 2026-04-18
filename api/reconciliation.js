@@ -7,15 +7,13 @@ module.exports = async (req, res) => {
 
   await connectDB();
 
-  // Yalnız ödəniş tarixi boş olan EQ-lar
+  // Bütün EQ və Bank qeydləri
   const [eqData, bankData] = await Promise.all([
-    ElektronQaime.find({
-      $or: [{ odenisTarixi: '' }, { odenisTarixi: null }, { odenisTarixi: { $exists: false } }],
-    }).lean(),
+    ElektronQaime.find({}).lean(),
     BankHesab.find({}).lean(),
   ]);
 
-  // "dd.mm.yyyy" tarix string-i müqayisə üçün yyyy-mm-dd-ə çevir
+  // "dd.mm.yyyy" -> "yyyy-mm-dd" sıralama açarı
   const sortKey = s => {
     const m = String(s || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
     if (!m) return '';
@@ -23,7 +21,14 @@ module.exports = async (req, res) => {
   };
   const cmpDate = (a, b) => sortKey(a).localeCompare(sortKey(b));
 
-  // EQ-ları VÖEN-ə görə qruplaşdır
+  const isPaid = eq => !!String(eq.odenisTarixi || '').trim();
+  const isEsas = t => (t || '').trim().toLowerCase().includes('yayım');
+  const isEdv  = t => {
+    const s = (t || '').trim().toLowerCase();
+    return s.includes('ədv') || s.includes('edv');
+  };
+
+  // EQ-ları VÖEN üzrə qruplaşdır
   const eqByVoen = {};
   eqData.forEach(eq => {
     const key = (eq.voen || '').trim() || (eq.reklamYayicisi || '').trim() || '__no_voen__';
@@ -31,22 +36,15 @@ module.exports = async (req, res) => {
     eqByVoen[key].push(eq);
   });
 
-  const isEsas = t => (t || '').trim().toLowerCase().includes('yayım');
-  const isEdv  = t => {
-    const s = (t || '').trim().toLowerCase();
-    return s.includes('ədv') || s.includes('edv');
-  };
-
   const result = [];
 
   Object.values(eqByVoen).forEach(eqs => {
-    // EQ-ları köhnə tarixdən yeni tarixə sırala
-    const sorted = eqs.slice().sort((a, b) => cmpDate(a.eqTarixi, b.eqTarixi));
+    // Yalnız ödəniş tarixi boş olanlara FIFO tətbiq edirik
+    const unpaidSorted = eqs.filter(e => !isPaid(e)).sort((a, b) => cmpDate(a.eqTarixi, b.eqTarixi));
+    const unpaidRefs = new Set(unpaidSorted.map(e => (e.icazeNo || '').trim()).filter(Boolean));
 
-    // Bu adamın bank ödənişlərini topla (icazeNo eşləşməsinə görə)
-    const personRefs = new Set(sorted.map(e => (e.icazeNo || '').trim()).filter(Boolean));
-    const personBank = bankData.filter(b => personRefs.has((b.muracietNomresiEqfNomresi || '').trim()));
-
+    // Bank hovuzu: yalnız boş EQ-lərin icazəNo-suna uyğun ödənişlər
+    const personBank = bankData.filter(b => unpaidRefs.has((b.muracietNomresiEqfNomresi || '').trim()));
     const esasBank = personBank.filter(b => isEsas(b.hesabatUzreTeyinat)).sort((a, b) => cmpDate(a.tarix, b.tarix));
     const edvBank  = personBank.filter(b => isEdv(b.hesabatUzreTeyinat)).sort((a, b) => cmpDate(a.tarix, b.tarix));
 
@@ -58,39 +56,72 @@ module.exports = async (req, res) => {
     const esasQeydAll   = esasBank.map(b => b.qeyd).filter(Boolean).join(', ');
     const edvQeydAll    = edvBank.map(b => b.qeyd).filter(Boolean).join(', ');
 
-    // FIFO: köhnə EQ-dən başlayıb ödəyirik
-    const rows = sorted.map(eq => {
+    // FIFO bölgü — nəticələri icazeNo-ya görə saxlayırıq
+    const allocByIcaze = {};
+    unpaidSorted.forEach(eq => {
+      const icaze = (eq.icazeNo || '').trim();
       const eqEsas = eq.eqMeblegEsas || 0;
       const eqEdv  = eq.eqMeblegEdv  || 0;
 
       const paidEsas = Math.min(esasAvail, eqEsas);
       esasAvail -= paidEsas;
-      const paidEdv  = Math.min(edvAvail, eqEdv);
+      const paidEdv = Math.min(edvAvail, eqEdv);
       edvAvail -= paidEdv;
 
-      return {
-        reklamYayicisi: eq.reklamYayicisi || '',
-        voen:           eq.voen || '',
-        icazeNo:        (eq.icazeNo || '').trim(),
-        eqTarixi:       eq.eqTarixi || '',
-        eqNomresi:      eq.eqNomresi || '',
-        eqEsas, eqEdv,
-        paidEsas,
-        esasTarix: paidEsas > 0 ? lastEsasTarix : '',
-        esasQeyd:  paidEsas > 0 ? esasQeydAll : '',
-        paidEdv,
-        edvTarix:  paidEdv > 0 ? lastEdvTarix : '',
-        edvQeyd:   paidEdv > 0 ? edvQeydAll : '',
-        hasMatch: personBank.length > 0,
-      };
+      allocByIcaze[icaze] = { paidEsas, paidEdv };
     });
 
-    // Bütün EQ-lar ödəndikdən sonra qalan = artıq ödəniş
     const leftover = esasAvail + edvAvail;
     const artiq = leftover > 0.01 ? leftover : 0;
     const lastBank = personBank.slice().sort((a, b) => cmpDate(b.tarix, a.tarix))[0];
     const artiqTarix = artiq > 0 && lastBank ? lastBank.tarix : '';
 
+    // EQ-ları orijinal ardıcıllıqla yaz
+    const rows = eqs.map(eq => {
+      const icaze = (eq.icazeNo || '').trim();
+
+      if (isPaid(eq)) {
+        // Ödəniş tarixi olanlara toxunma — olduğu kimi yaz
+        return {
+          reklamYayicisi: eq.reklamYayicisi || '',
+          voen:           eq.voen || '',
+          icazeNo:        icaze,
+          eqTarixi:       eq.eqTarixi || '',
+          eqNomresi:      eq.eqNomresi || '',
+          eqEsas:         eq.eqMeblegEsas || 0,
+          eqEdv:          eq.eqMeblegEdv  || 0,
+          paidEsas:       eq.odenisMeblegEsas || 0,
+          esasTarix:      eq.odenisTarixi || '',
+          esasQeyd:       eq.qeyd || '',
+          paidEdv:        eq.odenisMeblegEdv || 0,
+          edvTarix:       eq.odenisTarixiEdv || '',
+          edvQeyd:        '',
+          hasMatch:       false,
+          alreadyPaid:    true,
+        };
+      }
+
+      const alloc = allocByIcaze[icaze] || { paidEsas: 0, paidEdv: 0 };
+      return {
+        reklamYayicisi: eq.reklamYayicisi || '',
+        voen:           eq.voen || '',
+        icazeNo:        icaze,
+        eqTarixi:       eq.eqTarixi || '',
+        eqNomresi:      eq.eqNomresi || '',
+        eqEsas:         eq.eqMeblegEsas || 0,
+        eqEdv:          eq.eqMeblegEdv  || 0,
+        paidEsas:       alloc.paidEsas,
+        esasTarix:      alloc.paidEsas > 0 ? lastEsasTarix : '',
+        esasQeyd:       alloc.paidEsas > 0 ? esasQeydAll : '',
+        paidEdv:        alloc.paidEdv,
+        edvTarix:       alloc.paidEdv > 0 ? lastEdvTarix : '',
+        edvQeyd:        alloc.paidEdv > 0 ? edvQeydAll : '',
+        hasMatch:       alloc.paidEsas > 0 || alloc.paidEdv > 0,
+        alreadyPaid:    false,
+      };
+    });
+
+    // Artıq ödəniş sətri adamın sonuncu EQ-sindən sonra bir dəfə
     rows.forEach((r, idx) => {
       const isLast = idx === rows.length - 1;
       result.push({
