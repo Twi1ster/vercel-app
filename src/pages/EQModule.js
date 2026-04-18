@@ -75,7 +75,14 @@ export default function EQModule({ api, onUpdate }) {
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      if (rows.length === 0) {
+        showToast('Excel faylı boşdur və ya header sətri tapılmadı', true);
+        setLoading(false);
+        return;
+      }
+      const detectedHeaders = Object.keys(rows[0]);
+      console.log('Excel headers:', detectedHeaders);
       const docs = rows.map(row => ({
         reklamYayicisi: String(row['Reklam yayıcısının adı'] || ''),
         voen: String(row['VÖEN'] || row['VOEN'] || row['voen'] || ''),
@@ -90,6 +97,11 @@ export default function EQModule({ api, onUpdate }) {
         odenisMeblegEdv: parseFloat(row['Ödəniş məbləği(ƏDV)'] || row['Ödəniş məbləği (ƏDV)'] || 0) || 0,
         qeyd: String(row['Qeyd'] || row['qeyd'] || ''),
       }));
+      if (docs.length === 0) {
+        showToast('Heç bir uyğun sətir tapılmadı. Header adlarını yoxlayın.', true);
+        setLoading(false);
+        return;
+      }
       const CHUNK = 500;
       let imported = 0;
       for (let i = 0; i < docs.length; i += CHUNK) {
