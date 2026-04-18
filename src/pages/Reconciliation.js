@@ -13,7 +13,7 @@ export default function Reconciliation({ api }) {
       const json = await res.json();
       const data = json.data || [];
 
-      const empty = { 'VÖEN':'','Reklam Yayıcısı':'','İcazə №':'','EQ Nömrəsi':'','EQ Tarixi':'','EQ Əsas (Yayım haqqı yığımı)':'','EQ ƏDV (ƏDV daxilolma)':'','EQ CƏMİ':'','Ödənilmiş (Əsas)':'','Ödənilmiş (ƏDV)':'','Ödənilmiş CƏMİ':'','Qalıq (Əsas)':'','Qalıq (ƏDV)':'','Status':'' };
+      const empty = { 'VÖEN':'','Reklam Yayıcısı':'','İcazə №':'','EQ Nömrəsi':'','EQ Tarixi':'','EQ Əsas (Yayım haqqı yığımı)':'','EQ ƏDV (ƏDV daxilolma)':'','EQ CƏMİ':'','Ödənilmiş (Əsas)':'','Ödəniş Tarixi (Əsas)':'','Ödənilmiş (ƏDV)':'','Ödəniş Tarixi (ƏDV)':'','Ödənilmiş CƏMİ':'','Qalıq (Əsas)':'','Qalıq (ƏDV)':'','Status':'' };
       const rows = data.flatMap(row => {
         const main = {
           'VÖEN': row.voen,
@@ -24,8 +24,10 @@ export default function Reconciliation({ api }) {
           'EQ Əsas (Yayım haqqı yığımı)': row.eqMeblegEsas,
           'EQ ƏDV (ƏDV daxilolma)': row.eqMeblegEdv,
           'EQ CƏMİ': row.eqTotal,
-          'Ödənilmiş (Əsas)': row.paidEsas,
-          'Ödənilmiş (ƏDV)': row.paidEdv,
+          'Ödənilmiş (Əsas)': row.paidEsas || '',
+          'Ödəniş Tarixi (Əsas)': row.paidEsas > 0 ? row.odenisTarixi : '',
+          'Ödənilmiş (ƏDV)': row.paidEdv || '',
+          'Ödəniş Tarixi (ƏDV)': row.paidEdv > 0 ? row.odenisTarixiEdv : '',
           'Ödənilmiş CƏMİ': row.paidTotal,
           'Qalıq (Əsas)': row.qaliqEsas,
           'Qalıq (ƏDV)': row.qaliqEdv,

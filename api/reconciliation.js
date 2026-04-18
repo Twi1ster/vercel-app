@@ -64,6 +64,8 @@ module.exports = async (req, res) => {
       artiqEsas,
       artiqEdv,
       artiqOdenis,
+      odenisTarixi: eq.odenisTarixi || '',
+      odenisTarixiEdv: eq.odenisTarixiEdv || '',
       artiqOdenisTarixi: artiqOdenis > 0 ? (eq.odenisTarixiEdv || eq.odenisTarixi || '') : '',
       status,
     };
