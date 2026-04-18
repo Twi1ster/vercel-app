@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 const FIELDS = [
-  { key: 'bankHesab', label: 'Bank/Hesab', type: 'text' },
+  { key: 'bankHesab', label: 'Bank / Hesab', type: 'text' },
   { key: 'tarix', label: 'Tarix', type: 'text', placeholder: 'dd.mm.yyyy' },
-  { key: 'odeyiciVesait', label: 'Ödəyici/Vasitəni Alan', type: 'text' },
-  { key: 'medaxil', label: 'MəDaxil', type: 'number' },
+  { key: 'odeyiciVesait', label: 'Ödəyici / Vəsaiti Alan', type: 'text' },
+  { key: 'medaxil', label: 'Mədaxil', type: 'number' },
   { key: 'mexaric', label: 'Məxaric', type: 'number' },
-  { key: 'muracietNomresiEqfNomresi', label: 'Müraciət №(MəD) / EQF №(Məx)', type: 'text' },
-  { key: 'hesabatUzreTeyinat', label: 'Hesabat üzrə Təyinat', type: 'text' },
-  { key: 'voen', label: 'VOEN', type: 'text' },
+  { key: 'muracietNomresiEqfNomresi', label: 'Müraciət № (Məd) / EQF № (Məx)', type: 'text' },
+  { key: 'hesabatUzreTeyinat', label: 'Hesabat Üzrə Təyinat', type: 'text', full: true },
+  { key: 'voen', label: 'VÖEN', type: 'text' },
   { key: 'qeyd', label: 'Qeyd', type: 'textarea', full: true },
 ];
 
@@ -66,9 +66,28 @@ export default function BankModule({ api, onUpdate }) {
   const handleFile = async file => {
     if (!file) return;
     setLoading(true);
-    const fd = new FormData(); fd.append('file', file);
     try {
-      const r = await fetch(`${api}/api/bank/import`, { method: 'POST', body: fd });
+      const XLSX = await import('xlsx');
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const docs = rows.map(row => ({
+        bankHesab: String(row['Bank / hesab'] || row['Bank/Hesab'] || ''),
+        tarix: String(row['Tarix'] || row['tarix'] || ''),
+        odeyiciVesait: String(row['Ödəyici / Vəsaiti alan'] || row['Ödəyici/Vasitə'] || ''),
+        medaxil: parseFloat(row['Mədaxil'] || row['MəDaxil'] || 0) || 0,
+        mexaric: parseFloat(row['Məxaric'] || 0) || 0,
+        qeyd: String(row['Qeyd'] || row['qeyd'] || ''),
+        muracietNomresiEqfNomresi: String(row['Müraciət nömrəsi (mədaxil)/ EQF nömrəsi (məxaric)'] || row['Müraciət №'] || ''),
+        hesabatUzreTeyinat: String(row['HESABAT ÜZRƏ TƏYİNAT'] || row['Hesabat üzrə Təyinat'] || ''),
+        voen: String(row['VÖEN'] || row['VOEN'] || row['voen'] || ''),
+      }));
+      const r = await fetch(`${api}/api/bank/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(docs),
+      });
       const d = await r.json();
       setImportModal(false); load(1, ''); onUpdate();
       showToast(`${d.imported} qeyd import edildi`);
@@ -95,9 +114,9 @@ export default function BankModule({ api, onUpdate }) {
         <table>
           <thead>
             <tr>
-              <th>#</th><th>Bank/Hesab</th><th>Tarix</th><th>Ödəyici/Vasitə</th>
-              <th>MəDaxil</th><th>Məxaric</th><th>Müraciət/EQF №</th>
-              <th>Hesabat Təyinat</th><th>VOEN</th><th>Qeyd</th><th></th>
+              <th>#</th><th>Bank / Hesab</th><th>Tarix</th><th>Ödəyici / Vəsaiti Alan</th>
+              <th>Mədaxil</th><th>Məxaric</th><th>Müraciət № / EQF №</th>
+              <th>Hesabat Üzrə Təyinat</th><th>VÖEN</th><th>Qeyd</th><th></th>
             </tr>
           </thead>
           <tbody>
