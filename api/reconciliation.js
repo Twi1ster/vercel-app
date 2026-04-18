@@ -1,52 +1,57 @@
 const connectDB = require('./_db');
-const { ElektronQaime, BankHesab } = require('./_models');
+const { ElektronQaime } = require('./_models');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method !== 'GET') return res.status(405).end();
 
   await connectDB();
-  const { voen = '' } = req.query;
+  const { voen = '', search = '' } = req.query;
 
-  let eqFilter = {}, bankFilter = {};
-  if (voen) {
-    eqFilter.voen = { $regex: voen, $options: 'i' };
-    bankFilter.voen = { $regex: voen, $options: 'i' };
+  const filter = {};
+  if (voen) filter.voen = { $regex: voen, $options: 'i' };
+  if (search) {
+    filter.$or = [
+      { voen: { $regex: search, $options: 'i' } },
+      { icazeNo: { $regex: search, $options: 'i' } },
+      { reklamYayicisi: { $regex: search, $options: 'i' } },
+    ];
   }
 
-  const [eqData, bankData] = await Promise.all([
-    ElektronQaime.find(eqFilter).lean(),
-    BankHesab.find(bankFilter).lean(),
-  ]);
+  const eqData = await ElektronQaime.find(filter).sort({ eqTarixi: -1 }).lean();
 
-  const voenMap = {};
-  eqData.forEach(eq => {
-    const v = eq.voen || 'Naməlum';
-    if (!voenMap[v]) voenMap[v] = { voen: v, eq: [], bank: [] };
-    voenMap[v].eq.push(eq);
-  });
-  bankData.forEach(b => {
-    const v = b.voen || 'Naməlum';
-    if (!voenMap[v]) voenMap[v] = { voen: v, eq: [], bank: [] };
-    voenMap[v].bank.push(b);
-  });
+  const result = eqData.map(eq => {
+    const eqTotal = (eq.eqMeblegEsas || 0) + (eq.eqMeblegEdv || 0);
+    const paidEsas = eq.odenisMeblegEsas || 0;
+    const paidEdv = eq.odenisMeblegEdv || 0;
+    const paidTotal = paidEsas + paidEdv;
+    const qaliq = eqTotal - paidTotal;
+    const artiqOdenis = qaliq < -0.01 ? Math.abs(qaliq) : 0;
 
-  const result = Object.values(voenMap).map(item => {
-    const totalEqEsas = item.eq.reduce((s, e) => s + (e.eqMeblegEsas || 0), 0);
-    const totalEqEdv = item.eq.reduce((s, e) => s + (e.eqMeblegEdv || 0), 0);
-    const totalEq = totalEqEsas + totalEqEdv;
-    const totalMedaxil = item.bank.reduce((s, b) => s + (b.medaxil || 0), 0);
-    const totalMexaric = item.bank.reduce((s, b) => s + (b.mexaric || 0), 0);
-    const ferq = totalEq - totalMedaxil;
+    let status = 'Ödənilməyib';
+    if (Math.abs(qaliq) < 0.01) status = 'Tam Ödənilmiş';
+    else if (artiqOdenis > 0) status = 'Artıq Ödəniş';
+    else if (paidTotal > 0) status = 'Qismən Ödənilmiş';
+
     return {
-      voen: item.voen,
-      eqCount: item.eq.length,
-      bankCount: item.bank.length,
-      totalEqEsas, totalEqEdv, totalEq,
-      totalMedaxil, totalMexaric, ferq,
-      status: Math.abs(ferq) < 0.01 ? 'Balansda' : ferq > 0 ? 'EQ Artıq' : 'Bank Artıq',
+      _id: eq._id,
+      voen: eq.voen || '',
+      reklamYayicisi: eq.reklamYayicisi || '',
+      icazeNo: eq.icazeNo || '',
+      eqNomresi: eq.eqNomresi || '',
+      eqTarixi: eq.eqTarixi || '',
+      eqMeblegEsas: eq.eqMeblegEsas || 0,
+      eqMeblegEdv: eq.eqMeblegEdv || 0,
+      eqTotal,
+      paidEsas,
+      paidEdv,
+      paidTotal,
+      qaliq,
+      artiqOdenis,
+      artiqOdenisTarixi: artiqOdenis > 0 ? (eq.odenisTarixiEdv || eq.odenisTarixi || '') : '',
+      status,
     };
   });
 
-  res.json(result.sort((a, b) => Math.abs(b.ferq) - Math.abs(a.ferq)));
+  res.json(result);
 };

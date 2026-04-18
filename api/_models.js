@@ -1,13 +1,15 @@
 const mongoose = require('mongoose');
 
 const elektronQaimeSchema = new mongoose.Schema({
+  reklamYayicisi: { type: String, trim: true },
   voen: { type: String, trim: true },
   icazeNo: { type: String, trim: true },
   eqTarixi: { type: String },
+  eqNomresi: { type: String, trim: true },
   eqMeblegEsas: { type: Number, default: 0 },
   eqMeblegEdv: { type: Number, default: 0 },
   odenisTarixi: { type: String },
-  odenisTarixiEsas: { type: String },
+  odenisMeblegEsas: { type: Number, default: 0 },
   odenisTarixiEdv: { type: String },
   odenisMeblegEdv: { type: Number, default: 0 },
   qeyd: { type: String },

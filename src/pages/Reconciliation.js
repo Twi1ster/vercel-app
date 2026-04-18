@@ -2,18 +2,23 @@ import React, { useState, useEffect } from 'react';
 
 const fmt = n => Number(n || 0).toLocaleString('az-AZ', { minimumFractionDigits: 2 });
 
-export default function Reconciliation({ api }) {
-  const [data, setData] = useState([]);
-  const [voenFilter, setVoenFilter] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [eqDetail, setEqDetail] = useState([]);
-  const [bankDetail, setBankDetail] = useState([]);
+const STATUS_STYLE = {
+  'Tam Ödənilmiş':   { color: 'var(--green)',  bg: 'rgba(76,175,80,0.12)' },
+  'Artıq Ödəniş':    { color: 'var(--yellow)', bg: 'rgba(255,193,7,0.12)' },
+  'Qismən Ödənilmiş':{ color: 'var(--blue)',   bg: 'rgba(33,150,243,0.12)' },
+  'Ödənilməyib':     { color: 'var(--red)',     bg: 'rgba(244,67,54,0.12)' },
+};
 
-  const load = async (v = voenFilter) => {
+export default function Reconciliation({ api }) {
+  const [data, setData]       = useState([]);
+  const [search, setSearch]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
+
+  const load = async (s = search) => {
     setLoading(true);
     try {
-      const r = await fetch(`${api}/api/reconciliation?voen=${encodeURIComponent(v)}`);
+      const r = await fetch(`${api}/api/reconciliation?search=${encodeURIComponent(s)}`);
       const d = await r.json();
       setData(d);
     } catch {}
@@ -22,174 +27,140 @@ export default function Reconciliation({ api }) {
 
   useEffect(() => { load(); }, []);
 
-  const openDetail = async (row) => {
-    setSelected(row);
-    const [eq, bank] = await Promise.all([
-      fetch(`${api}/api/eq?voen=${encodeURIComponent(row.voen)}&limit=200`).then(r => r.json()),
-      fetch(`${api}/api/bank?voen=${encodeURIComponent(row.voen)}&limit=200`).then(r => r.json()),
-    ]);
-    setEqDetail(eq.data || []);
-    setBankDetail(bank.data || []);
+  const filtered = statusFilter ? data.filter(d => d.status === statusFilter) : data;
+
+  const counts = {
+    tamOdenilmish:    data.filter(d => d.status === 'Tam Ödənilmiş').length,
+    artiqOdenis:      data.filter(d => d.status === 'Artıq Ödəniş').length,
+    qismenOdenilmish: data.filter(d => d.status === 'Qismən Ödənilmiş').length,
+    odenilmeyib:      data.filter(d => d.status === 'Ödənilməyib').length,
   };
 
-  const balanced = data.filter(d => d.status === 'Balansda').length;
-  const eqArtiq = data.filter(d => d.status === 'EQ Artıq').length;
-  const bankArtiq = data.filter(d => d.status === 'Bank Artıq').length;
+  const totalArtiq = data.reduce((s, d) => s + (d.artiqOdenis || 0), 0);
 
   return (
     <div>
       <div className="module-header">
-        <div className="module-title"><span>03</span> — Rekonsiliasiya · EQ ↔ Bank</div>
+        <div className="module-title"><span>03</span> — Rekonsiliasiya · EQ Ödəniş Statusu</div>
         <div className="toolbar">
-          <input className="search-input" placeholder="VOEN ilə filtr..." value={voenFilter}
-            onChange={e => setVoenFilter(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && load(voenFilter)} />
-          <button className="btn btn-primary" onClick={() => load(voenFilter)}>
+          <input
+            className="search-input"
+            placeholder="VÖEN, İcazə №, Reklam Yayıcısı..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && load(search)}
+          />
+          <button className="btn btn-primary" onClick={() => load(search)}>
             {loading ? 'Yüklənir...' : '⟳ Yenilə'}
           </button>
         </div>
       </div>
 
+      {/* Summary cards */}
       <div className="recon-summary">
-        <div className="recon-card">
-          <div className="recon-card-label">Ümumi VOEN Sayı</div>
-          <div className="recon-card-val" style={{ color: 'var(--text)' }}>{data.length}</div>
-        </div>
-        <div className="recon-card">
-          <div className="recon-card-label">Balansda</div>
-          <div className="recon-card-val" style={{ color: 'var(--green)' }}>{balanced}</div>
-        </div>
-        <div className="recon-card">
-          <div className="recon-card-label">Fərq Var</div>
-          <div className="recon-card-val" style={{ color: 'var(--red)' }}>{eqArtiq + bankArtiq}</div>
-        </div>
+        {[
+          { label: 'Tam Ödənilmiş',    val: counts.tamOdenilmish,    key: 'Tam Ödənilmiş',    color: 'var(--green)'  },
+          { label: 'Artıq Ödəniş',     val: counts.artiqOdenis,      key: 'Artıq Ödəniş',     color: 'var(--yellow)' },
+          { label: 'Qismən Ödənilmiş', val: counts.qismenOdenilmish, key: 'Qismən Ödənilmiş', color: 'var(--blue)'   },
+          { label: 'Ödənilməyib',      val: counts.odenilmeyib,      key: 'Ödənilməyib',      color: 'var(--red)'    },
+        ].map(c => (
+          <div
+            key={c.key}
+            className="recon-card"
+            style={{ cursor: 'pointer', outline: statusFilter === c.key ? `2px solid ${c.color}` : 'none' }}
+            onClick={() => setStatusFilter(prev => prev === c.key ? '' : c.key)}
+          >
+            <div className="recon-card-label">{c.label}</div>
+            <div className="recon-card-val" style={{ color: c.color }}>{c.val}</div>
+          </div>
+        ))}
+        {totalArtiq > 0 && (
+          <div className="recon-card" style={{ gridColumn: 'span 2' }}>
+            <div className="recon-card-label">Ümumi Artıq Ödəniş Məbləği</div>
+            <div className="recon-card-val" style={{ color: 'var(--yellow)', fontSize: 20 }}>{fmt(totalArtiq)} ₼</div>
+          </div>
+        )}
       </div>
 
+      {/* Table */}
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>VOEN</th>
-              <th>EQ Sayı</th>
-              <th>EQ Cəmi (Əsas)</th>
-              <th>EQ Cəmi (ƏDV)</th>
-              <th>EQ CƏMİ</th>
-              <th>Bank MəDaxil</th>
-              <th>Bank Məxaric</th>
-              <th>FƏRQ</th>
-              <th>STATUS</th>
-              <th>Bank Sayı</th>
+              <th>#</th>
+              <th>VÖEN</th>
+              <th>Reklam Yayıcısı</th>
+              <th>İcazə №</th>
+              <th>EQ Tarixi</th>
+              <th className="num">EQ Əsas</th>
+              <th className="num">EQ ƏDV</th>
+              <th className="num">EQ CƏMİ</th>
+              <th className="num">Ödənilmiş (Əsas)</th>
+              <th className="num">Ödənilmiş (ƏDV)</th>
+              <th className="num">Ödənilmiş CƏMİ</th>
+              <th className="num">Qalıq</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {data.length === 0 && (
-              <tr><td colSpan={10}>
-                <div className="empty-state"><div className="es-icon">⚖</div>Data tapılmadı</div>
+            {filtered.length === 0 && (
+              <tr><td colSpan={13}>
+                <div className="empty-state"><div className="es-icon">⚖</div>Qeyd tapılmadı</div>
               </td></tr>
             )}
-            {data.map(row => (
-              <tr key={row.voen} style={{ cursor: 'pointer' }} onClick={() => openDetail(row)}>
-                <td style={{ color: 'var(--accent)', fontWeight: 700, fontFamily: 'var(--mono)' }}>{row.voen}</td>
-                <td className="num">{row.eqCount}</td>
-                <td className="num num-pos">{fmt(row.totalEqEsas)}</td>
-                <td className="num num-pos">{fmt(row.totalEqEdv)}</td>
-                <td className="num" style={{ fontWeight: 700 }}>{fmt(row.totalEq)}</td>
-                <td className="num num-pos">{fmt(row.totalMedaxil)}</td>
-                <td className="num num-neg">{fmt(row.totalMexaric)}</td>
-                <td className={`num ${Math.abs(row.ferq) < 0.01 ? 'num-zero' : row.ferq > 0 ? 'num-neg' : 'num-pos'}`} style={{ fontWeight: 700 }}>
-                  {row.ferq > 0 ? '+' : ''}{fmt(row.ferq)}
-                </td>
-                <td>
-                  <span className={`badge ${row.status === 'Balansda' ? 'badge-green' : row.status === 'EQ Artıq' ? 'badge-red' : 'badge-yellow'}`}>
-                    {row.status}
-                  </span>
-                </td>
-                <td className="num">{row.bankCount}</td>
-              </tr>
-            ))}
+            {filtered.map((row, i) => {
+              const st = STATUS_STYLE[row.status] || {};
+              return (
+                <React.Fragment key={row._id}>
+                  <tr style={{ background: row.artiqOdenis > 0 ? 'rgba(255,193,7,0.05)' : undefined }}>
+                    <td className="num" style={{ color: 'var(--text3)' }}>{i + 1}</td>
+                    <td style={{ color: 'var(--accent)', fontWeight: 600, fontFamily: 'var(--mono)' }}>{row.voen}</td>
+                    <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.reklamYayicisi}</td>
+                    <td>{row.icazeNo}</td>
+                    <td>{row.eqTarixi}</td>
+                    <td className="num num-pos">{fmt(row.eqMeblegEsas)}</td>
+                    <td className="num num-pos">{fmt(row.eqMeblegEdv)}</td>
+                    <td className="num" style={{ fontWeight: 700 }}>{fmt(row.eqTotal)}</td>
+                    <td className="num num-pos">{row.paidEsas > 0 ? fmt(row.paidEsas) : '—'}</td>
+                    <td className="num num-pos">{row.paidEdv > 0 ? fmt(row.paidEdv) : '—'}</td>
+                    <td className="num" style={{ fontWeight: 700 }}>{row.paidTotal > 0 ? fmt(row.paidTotal) : '—'}</td>
+                    <td className="num" style={{ fontWeight: 700, color: Math.abs(row.qaliq) < 0.01 ? 'var(--green)' : row.qaliq > 0 ? 'var(--red)' : 'var(--yellow)' }}>
+                      {Math.abs(row.qaliq) < 0.01 ? '✓' : fmt(row.qaliq)}
+                    </td>
+                    <td>
+                      <span style={{
+                        display: 'inline-block', padding: '2px 10px', borderRadius: 4,
+                        fontSize: 11, fontWeight: 600, fontFamily: 'var(--mono)',
+                        color: st.color, background: st.bg,
+                      }}>
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Artıq ödəniş extra row */}
+                  {row.artiqOdenis > 0 && (
+                    <tr style={{ background: 'rgba(255,193,7,0.08)' }}>
+                      <td></td>
+                      <td colSpan={3} style={{ paddingLeft: 24, color: 'var(--yellow)', fontSize: 12, fontStyle: 'italic' }}>
+                        ↳ Artıq ödəniş
+                      </td>
+                      <td style={{ color: 'var(--text3)', fontSize: 12 }}>
+                        {row.artiqOdenisTarixi || '—'}
+                      </td>
+                      <td colSpan={6}></td>
+                      <td className="num" style={{ fontWeight: 700, color: 'var(--yellow)', fontSize: 13 }}>
+                        +{fmt(row.artiqOdenis)} ₼
+                      </td>
+                      <td></td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
-
-      {/* DETAIL MODAL */}
-      {selected && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelected(null)}>
-          <div className="modal" style={{ maxWidth: 1000 }}>
-            <div className="modal-header">
-              <span className="modal-title">VOEN: {selected.voen} — Ətraflı</span>
-              <button className="modal-close" onClick={() => setSelected(null)}>×</button>
-            </div>
-            <div className="modal-body" style={{ padding: 0 }}>
-
-              {/* Summary row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0, borderBottom: '1px solid var(--border)' }}>
-                {[
-                  { l: 'EQ Cəmi', v: fmt(selected.totalEq), c: 'var(--text)' },
-                  { l: 'Bank MəDaxil', v: fmt(selected.totalMedaxil), c: 'var(--green)' },
-                  { l: 'Fərq', v: (selected.ferq > 0 ? '+' : '') + fmt(selected.ferq), c: Math.abs(selected.ferq) < 0.01 ? 'var(--green)' : 'var(--red)' },
-                  { l: 'Status', v: selected.status, c: selected.status === 'Balansda' ? 'var(--green)' : 'var(--red)' },
-                ].map(s => (
-                  <div key={s.l} style={{ padding: '16px 20px', borderRight: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: 1 }}>{s.l}</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--mono)', color: s.c, marginTop: 4 }}>{s.v}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
-                {/* EQ list */}
-                <div style={{ borderRight: '1px solid var(--border)' }}>
-                  <div style={{ padding: '10px 16px', background: 'var(--bg3)', fontSize: 10, letterSpacing: 1, color: 'var(--accent)', fontFamily: 'var(--mono)', textTransform: 'uppercase' }}>
-                    Elektron Qaimelər ({eqDetail.length})
-                  </div>
-                  <div style={{ maxHeight: 360, overflowY: 'auto' }}>
-                    <table style={{ width: '100%' }}>
-                      <thead><tr>
-                        <th>İcazə №</th><th>EQ Tarixi</th><th>Əsas</th><th>ƏDV</th>
-                      </tr></thead>
-                      <tbody>
-                        {eqDetail.map(e => (
-                          <tr key={e._id}>
-                            <td>{e.icazeNo}</td><td>{e.eqTarixi}</td>
-                            <td className="num num-pos">{fmt(e.eqMeblegEsas)}</td>
-                            <td className="num num-pos">{fmt(e.eqMeblegEdv)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                {/* Bank list */}
-                <div>
-                  <div style={{ padding: '10px 16px', background: 'var(--bg3)', fontSize: 10, letterSpacing: 1, color: 'var(--blue)', fontFamily: 'var(--mono)', textTransform: 'uppercase' }}>
-                    Bank Əməliyyatları ({bankDetail.length})
-                  </div>
-                  <div style={{ maxHeight: 360, overflowY: 'auto' }}>
-                    <table style={{ width: '100%' }}>
-                      <thead><tr>
-                        <th>Tarix</th><th>MəDaxil</th><th>Məxaric</th><th>№</th>
-                      </tr></thead>
-                      <tbody>
-                        {bankDetail.map(b => (
-                          <tr key={b._id}>
-                            <td>{b.tarix}</td>
-                            <td className="num num-pos">{b.medaxil > 0 ? fmt(b.medaxil) : '—'}</td>
-                            <td className="num num-neg">{b.mexaric > 0 ? fmt(b.mexaric) : '—'}</td>
-                            <td style={{ fontSize: 10 }}>{b.muracietNomresiEqfNomresi}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setSelected(null)}>Bağla</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
