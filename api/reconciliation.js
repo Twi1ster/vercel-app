@@ -1,6 +1,42 @@
 const connectDB = require('./_db');
 const { ElektronQaime, BankHesab } = require('./_models');
 
+const EPS = 0.01;
+const PRINCIPAL_TYPE = 'Yayım haqqı yığımı';
+const VAT_TYPE = 'Digər daxilolmalar (ƏDV)';
+
+const safeNum = v => (typeof v === 'number' && isFinite(v) ? v : 0);
+
+const sortKey = s => {
+  const m = String(s || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (!m) return '';
+  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+};
+const cmpDate = (a, b) => sortKey(a).localeCompare(sortKey(b));
+const hasDate = s => !!String(s || '').trim();
+
+// FIFO allocation: drains bankTxs into items, tracking owed/paid/date per component.
+// owedKey is mutated (remaining owed), paidKey accumulates, dateKey is set on full pay.
+function fifoAllocate(items, bankTxs, owedKey, paidKey, dateKey) {
+  let idx = 0;
+  for (const tx of bankTxs) {
+    while (tx.remaining > EPS && idx < items.length) {
+      const item = items[idx];
+      if (item[owedKey] < EPS) { idx++; continue; }
+      const take = Math.min(tx.remaining, item[owedKey]);
+      item[paidKey] += take;
+      item[owedKey] -= take;
+      tx.remaining -= take;
+      if (item[owedKey] < EPS) {
+        item[owedKey] = 0;
+        item[dateKey] = tx.tarix;
+        idx++;
+      }
+    }
+    if (idx >= items.length) break;
+  }
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method !== 'GET') return res.status(405).end();
@@ -12,124 +48,180 @@ module.exports = async (req, res) => {
     BankHesab.find({}).lean(),
   ]);
 
-  const sortKey = s => {
-    const m = String(s || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-    if (!m) return '';
-    return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-  };
-  const cmpDate = (a, b) => sortKey(a).localeCompare(sortKey(b));
-  const hasDate = s => !!String(s || '').trim();
-  const invoiceAmount = eq => (eq.eqMeblegEsas || 0) + (eq.eqMeblegEdv || 0);
-
-  // Qrup açarı: İCAZƏ №. EQ №-si ilə də axtarış üçün köməkçi xəritə qururuq.
+  // Group invoices by icazeNo
   const groups = {};
-  const eqNomresiToIcaze = new Map();
   eqData.forEach(eq => {
     const key = (eq.icazeNo || '').trim() || `__no_icaze__${eq._id}`;
-    if (!groups[key]) groups[key] = { icazeNo: (eq.icazeNo || '').trim(), voen: eq.voen || '', reklamYayicisi: eq.reklamYayicisi || '', eqs: [], banks: [] };
+    if (!groups[key]) {
+      groups[key] = {
+        icazeNo: (eq.icazeNo || '').trim(),
+        voen: eq.voen || '',
+        reklamYayicisi: eq.reklamYayicisi || '',
+        eqs: [],
+        principalBanks: [],
+        vatBanks: [],
+      };
+    }
     groups[key].eqs.push(eq);
-    const eqNo = (eq.eqNomresi || '').trim();
-    if (eqNo) eqNomresiToIcaze.set(eqNo, key);
-  });
-  // Bank → qrup: əvvəlcə icazə №-si, sonra EQ №-si kimi uyğunlaşdırılır
-  bankData.forEach(b => {
-    if (!(b.medaxil > 0)) return;
-    const ref = (b.muracietNomresiEqfNomresi || '').trim();
-    if (!ref) return;
-    if (groups[ref]) { groups[ref].banks.push(b); return; }
-    const viaEq = eqNomresiToIcaze.get(ref);
-    if (viaEq && groups[viaEq]) groups[viaEq].banks.push(b);
   });
 
-  const result = [];
+  // Route bank entries: match ONLY by icazeNo === muracietNomresiEqfNomresi
+  bankData.forEach(b => {
+    if (!(safeNum(b.medaxil) > EPS)) return;
+    const ref = (b.muracietNomresiEqfNomresi || '').trim();
+    if (!ref || !groups[ref]) return;
+    const type = (b.hesabatUzreTeyinat || '').trim();
+    if (type === PRINCIPAL_TYPE) groups[ref].principalBanks.push(b);
+    else if (type === VAT_TYPE) groups[ref].vatBanks.push(b);
+  });
+
+  const rows = [];
   const summary = [];
 
-  Object.values(groups).forEach(({ icazeNo, voen, reklamYayicisi, eqs, banks }) => {
-    // 1. Yalnız ödəniş tarixi boş olan qaimələri götür
-    // 2. Tarix üzrə yaşlıdan yeniyə sırala
+  Object.values(groups).forEach(({ icazeNo, voen, reklamYayicisi, eqs, principalBanks, vatBanks }) => {
+    // Only invoices where principal date is not yet set
     const unpaid = eqs
       .filter(eq => !hasDate(eq.odenisTarixi))
-      .sort((a, b) => cmpDate(a.eqTarixi, b.eqTarixi))
-      .map(eq => ({
+      .sort((a, b) => cmpDate(a.eqTarixi, b.eqTarixi));
+
+    if (unpaid.length === 0) return;
+
+    const items = unpaid.map(eq => {
+      const principalOrig = safeNum(eq.eqMeblegEsas);
+      const vatOrig = safeNum(eq.eqMeblegEdv);
+      return {
         invoiceId: String(eq._id),
         icazeNo: (eq.icazeNo || '').trim(),
         eqNomresi: eq.eqNomresi || '',
         eqTarixi: eq.eqTarixi || '',
         voen: eq.voen || '',
         reklamYayicisi: eq.reklamYayicisi || '',
-        originalAmount: invoiceAmount(eq),
-        paidAmount: 0,
-        remainingAmount: invoiceAmount(eq),
-        status: 'UNPAID',
-        paymentDate: '',
-      }));
+        qeyd: eq.qeyd || '',
+        principalOrig,
+        vatOrig,
+        principalOwed: principalOrig,
+        principalPaid: 0,
+        principalDate: '',
+        vatOwed: vatOrig,
+        vatPaid: 0,
+        vatDate: '',
+      };
+    });
 
-    if (unpaid.length === 0) return;
-
-    // 3. Bank medaxilləri tarix üzrə sıralı
-    const bankTxs = banks
+    const pBanks = principalBanks
       .slice()
       .sort((a, b) => cmpDate(a.tarix, b.tarix))
-      .map(b => ({ tarix: b.tarix, remaining: b.medaxil || 0 }));
+      .map(b => ({ tarix: b.tarix || '', remaining: safeNum(b.medaxil) }));
 
-    // 4. FIFO allokasiya
-    let invIdx = 0;
-    for (const tx of bankTxs) {
-      while (tx.remaining > 0.01 && invIdx < unpaid.length) {
-        const inv = unpaid[invIdx];
-        const take = Math.min(tx.remaining, inv.remaining);
-        inv.paidAmount += take;
-        inv.remainingAmount -= take;
-        tx.remaining -= take;
-        inv.paymentDate = tx.tarix;
-        if (inv.remainingAmount < 0.01) {
-          inv.remainingAmount = 0;
-          inv.status = 'PAID';
-          invIdx++;
-        } else {
-          inv.status = 'PARTIAL';
-        }
-      }
-      if (invIdx >= unpaid.length) break;
-    }
+    const vBanks = vatBanks
+      .slice()
+      .sort((a, b) => cmpDate(a.tarix, b.tarix))
+      .map(b => ({ tarix: b.tarix || '', remaining: safeNum(b.medaxil) }));
 
-    // Heç ödənilməmiş qalanlar UNPAID olaraq qalır
-    unpaid.forEach(inv => result.push(inv));
+    // Independent FIFO flows — principal and VAT do not mix
+    fifoAllocate(items, pBanks, 'principalOwed', 'principalPaid', 'principalDate');
+    fifoAllocate(items, vBanks, 'vatOwed', 'vatPaid', 'vatDate');
 
-    // 5. Bank məbləğindən artıq qalanlar → OVERPAYMENT sətri
-    const overpaymentTotal = bankTxs.reduce((s, tx) => s + Math.max(0, tx.remaining), 0);
-    let overpaymentDate = '';
-    if (overpaymentTotal > 0.01) {
-      overpaymentDate = bankTxs.filter(tx => tx.remaining > 0.01).map(tx => tx.tarix).sort((a, b) => cmpDate(b, a))[0] || '';
-      result.push({
+    items.forEach(item => {
+      const originalAmount = item.principalOrig + item.vatOrig;
+      const paidAmount = item.principalPaid + item.vatPaid;
+      const remainingAmount = item.principalOwed + item.vatOwed;
+      const status = remainingAmount < EPS ? 'PAID' : paidAmount > EPS ? 'PARTIAL' : 'UNPAID';
+      const paymentDate = [item.principalDate, item.vatDate]
+        .filter(hasDate)
+        .sort(cmpDate)
+        .pop() || '';
+
+      rows.push({
+        invoiceId: item.invoiceId,
+        icazeNo: item.icazeNo,
+        eqNomresi: item.eqNomresi,
+        eqTarixi: item.eqTarixi,
+        voen: item.voen,
+        reklamYayicisi: item.reklamYayicisi,
+        qeyd: item.qeyd,
+        originalAmount,
+        paidAmount,
+        remainingAmount,
+        odenisTarixi: item.principalDate,
+        odenisMeblegEsas: item.principalPaid,
+        odenisTarixiEdv: item.vatDate,
+        odenisMeblegEdv: item.vatPaid,
+        status,
+        paymentDate,
+      });
+    });
+
+    const princOverpay = pBanks.reduce((s, tx) => s + Math.max(0, tx.remaining), 0);
+    const vatOverpay = vBanks.reduce((s, tx) => s + Math.max(0, tx.remaining), 0);
+
+    if (princOverpay > EPS) {
+      const overpayDate = pBanks
+        .filter(tx => tx.remaining > EPS)
+        .map(tx => tx.tarix)
+        .sort(cmpDate)
+        .pop() || '';
+      rows.push({
         invoiceId: '',
         icazeNo,
         eqNomresi: '',
         eqTarixi: '',
         voen,
         reklamYayicisi,
+        qeyd: '',
         originalAmount: 0,
         paidAmount: 0,
-        remainingAmount: overpaymentTotal,
+        remainingAmount: princOverpay,
+        odenisTarixi: '',
+        odenisMeblegEsas: princOverpay,
+        odenisTarixiEdv: '',
+        odenisMeblegEdv: 0,
         status: 'OVERPAYMENT',
-        paymentDate: overpaymentDate,
+        paymentDate: overpayDate,
       });
     }
 
-    // Summary per İCAZƏ
-    const totalInvoice = unpaid.reduce((s, i) => s + i.originalAmount, 0);
-    const totalPaid = unpaid.reduce((s, i) => s + i.paidAmount, 0);
-    const totalRemaining = unpaid.reduce((s, i) => s + i.remainingAmount, 0);
+    if (vatOverpay > EPS) {
+      const overpayDate = vBanks
+        .filter(tx => tx.remaining > EPS)
+        .map(tx => tx.tarix)
+        .sort(cmpDate)
+        .pop() || '';
+      rows.push({
+        invoiceId: '',
+        icazeNo,
+        eqNomresi: '',
+        eqTarixi: '',
+        voen,
+        reklamYayicisi,
+        qeyd: '',
+        originalAmount: 0,
+        paidAmount: 0,
+        remainingAmount: vatOverpay,
+        odenisTarixi: '',
+        odenisMeblegEsas: 0,
+        odenisTarixiEdv: '',
+        odenisMeblegEdv: vatOverpay,
+        status: 'OVERPAYMENT',
+        paymentDate: overpayDate,
+      });
+    }
+
+    const totalInvoiceAmount = items.reduce((s, i) => s + i.principalOrig + i.vatOrig, 0);
+    const totalPaid = items.reduce((s, i) => s + i.principalPaid + i.vatPaid, 0);
+    const remainingBalance = items.reduce((s, i) => s + i.principalOwed + i.vatOwed, 0);
+    const overpayment = princOverpay + vatOverpay;
+
     summary.push({
       icazeNo,
       voen,
       reklamYayicisi,
-      totalInvoiceAmount: totalInvoice,
+      totalInvoiceAmount,
       totalPaid,
-      remainingBalance: totalRemaining,
-      overpayment: overpaymentTotal > 0.01 ? overpaymentTotal : 0,
+      remainingBalance,
+      overpayment: overpayment > EPS ? overpayment : 0,
     });
   });
 
-  res.json({ rows: result, summary });
+  res.json({ rows, summary });
 };
