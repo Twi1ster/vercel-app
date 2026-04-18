@@ -15,6 +15,51 @@ export default function Reconciliation({ api }) {
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
 
+  const exportExcel = async () => {
+    const XLSX = await import('xlsx');
+    const rows = filtered.flatMap(row => {
+      const main = {
+        'VÖEN': row.voen,
+        'Reklam Yayıcısı': row.reklamYayicisi,
+        'İcazə №': row.icazeNo,
+        'EQ Nömrəsi': row.eqNomresi,
+        'EQ Tarixi': row.eqTarixi,
+        'EQ Əsas': row.eqMeblegEsas,
+        'EQ ƏDV': row.eqMeblegEdv,
+        'EQ CƏMİ': row.eqTotal,
+        'Ödənilmiş (Əsas)': row.paidEsas,
+        'Ödənilmiş (ƏDV)': row.paidEdv,
+        'Ödənilmiş CƏMİ': row.paidTotal,
+        'Qalıq': row.qaliq,
+        'Status': row.status,
+        'Qeyd': '',
+      };
+      if (row.artiqOdenis > 0) {
+        return [main, {
+          'VÖEN': '',
+          'Reklam Yayıcısı': '↳ Artıq ödəniş',
+          'İcazə №': '',
+          'EQ Nömrəsi': '',
+          'EQ Tarixi': row.artiqOdenisTarixi,
+          'EQ Əsas': '',
+          'EQ ƏDV': '',
+          'EQ CƏMİ': '',
+          'Ödənilmiş (Əsas)': '',
+          'Ödənilmiş (ƏDV)': '',
+          'Ödənilmiş CƏMİ': '',
+          'Qalıq': row.artiqOdenis,
+          'Status': 'Artıq Ödəniş',
+          'Qeyd': '',
+        }];
+      }
+      return [main];
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Rekonsiliasiya');
+    XLSX.writeFile(wb, `rekonsiliasiya_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
   const load = async (s = search) => {
     setLoading(true);
     try {
@@ -52,6 +97,9 @@ export default function Reconciliation({ api }) {
           />
           <button className="btn btn-primary" onClick={() => load(search)}>
             {loading ? 'Yüklənir...' : '⟳ Yenilə'}
+          </button>
+          <button className="btn btn-secondary" onClick={exportExcel} disabled={filtered.length === 0}>
+            ⬇ Excel
           </button>
         </div>
       </div>
