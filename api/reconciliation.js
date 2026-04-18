@@ -27,12 +27,20 @@ module.exports = async (req, res) => {
     bankByRef[ref].push(b);
   });
 
+  // Debug: ilk 5 bank refini və ilk 5 EQ icazeNo-nu logla
+  const bankRefs = Object.keys(bankByRef).slice(0, 5);
+  const eqIcazes = eqData.slice(0, 5).map(e => e.icazeNo);
+  const teyinatlar = [...new Set(bankData.map(b => b.hesabatUzreTeyinat).filter(Boolean))];
+  console.log('BANK REFS:', bankRefs);
+  console.log('EQ ICAZES:', eqIcazes);
+  console.log('TEYINATLAR:', teyinatlar);
+
   const result = eqData.map(eq => {
     const icaze = (eq.icazeNo || '').trim();
     const matched = bankByRef[icaze] || [];
 
-    const esasRec = matched.filter(b => (b.hesabatUzreTeyinat || '').trim() === ESAS_TEYINAT);
-    const edvRec  = matched.filter(b => (b.hesabatUzreTeyinat || '').trim() === EDV_TEYINAT);
+    const esasRec = matched.filter(b => (b.hesabatUzreTeyinat || '').trim().toLowerCase().includes('yayım'));
+    const edvRec  = matched.filter(b => (b.hesabatUzreTeyinat || '').trim().toLowerCase().includes('ədv') || (b.hesabatUzreTeyinat || '').trim().toLowerCase().includes('edv'));
 
     const paidEsas = esasRec.reduce((s, b) => s + (b.medaxil || 0), 0);
     const paidEdv  = edvRec.reduce((s,  b) => s + (b.medaxil || 0), 0);
