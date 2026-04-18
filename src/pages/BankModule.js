@@ -107,8 +107,19 @@ export default function BankModule({ api, onUpdate }) {
         medaxil: parseNum(row['Mədaxil'] ?? row['MəDaxil']),
         mexaric: parseNum(row['Məxaric']),
         qeyd: String(row['Qeyd'] || row['qeyd'] || ''),
-        muracietNomresiEqfNomresi: String(row['Müraciət nömrəsi (mədaxil)/ EQF nömrəsi (məxaric)'] || row['Müraciət №'] || ''),
-        hesabatUzreTeyinat: String(row['HESABAT ÜZRƏ TƏYİNAT'] || row['Hesabat üzrə Təyinat'] || ''),
+        muracietNomresiEqfNomresi: String(
+          row['Müraciət nömrəsi (mədaxil)/ EQF nömrəsi (məxaric)'] ||
+          row['Müraciət nömrəsi (mədaxil)/EQF nömrəsi (məxaric)'] ||
+          row['Müraciеt nömrəsi (mədaxil)/ EQF nömrəsi (məxaric)'] ||
+          Object.entries(row).find(([k]) => k.toLowerCase().includes('müraciət') || k.toLowerCase().includes('muraciət') || k.toLowerCase().includes('eqf'))?.[1] ||
+          row['Müraciət №'] || ''
+        ),
+        hesabatUzreTeyinat: String(
+          row['HESABAT ÜZRƏ TƏYİNAT'] ||
+          row['Hesabat üzrə Təyinat'] ||
+          Object.entries(row).find(([k]) => k.toLowerCase().includes('hesabat'))?.[1] ||
+          ''
+        ),
         voen: String(row['VÖEN'] || row['VOEN'] || row['voen'] || ''),
       }));
       const CHUNK = 500;
