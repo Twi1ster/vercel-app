@@ -15,16 +15,15 @@ module.exports = async (req, res) => {
     BankHesab.find({}).lean(),
   ]);
 
-  // Bank-ı icazeNo-ya görə qruplaşdır
-  const bankByRef = {};
-  bankData.forEach(b => {
-    const ref = (b.muracietNomresiEqfNomresi || '').trim();
-    if (!ref) return;
-    if (!bankByRef[ref]) bankByRef[ref] = [];
-    bankByRef[ref].push(b);
-  });
+  // "dd.mm.yyyy" tarix string-i müqayisə üçün yyyy-mm-dd-ə çevir
+  const sortKey = s => {
+    const m = String(s || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (!m) return '';
+    return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  };
+  const cmpDate = (a, b) => sortKey(a).localeCompare(sortKey(b));
 
-  // EQ-ları VÖEN-ə görə qruplaşdır (bir adamın bir neçə qaiməsi ola bilər)
+  // EQ-ları VÖEN-ə görə qruplaşdır
   const eqByVoen = {};
   eqData.forEach(eq => {
     const key = (eq.voen || '').trim() || (eq.reklamYayicisi || '').trim() || '__no_voen__';
@@ -41,60 +40,62 @@ module.exports = async (req, res) => {
   const result = [];
 
   Object.values(eqByVoen).forEach(eqs => {
-    // Bu adamın bütün bank ödənişlərini topla (icazeNo-ya görə)
-    const personRefs = new Set(eqs.map(e => (e.icazeNo || '').trim()).filter(Boolean));
+    // EQ-ları köhnə tarixdən yeni tarixə sırala
+    const sorted = eqs.slice().sort((a, b) => cmpDate(a.eqTarixi, b.eqTarixi));
+
+    // Bu adamın bank ödənişlərini topla (icazeNo eşləşməsinə görə)
+    const personRefs = new Set(sorted.map(e => (e.icazeNo || '').trim()).filter(Boolean));
     const personBank = bankData.filter(b => personRefs.has((b.muracietNomresiEqfNomresi || '').trim()));
 
-    let personEqTotal = 0;
-    let personPaidTotal = 0;
+    const esasBank = personBank.filter(b => isEsas(b.hesabatUzreTeyinat)).sort((a, b) => cmpDate(a.tarix, b.tarix));
+    const edvBank  = personBank.filter(b => isEdv(b.hesabatUzreTeyinat)).sort((a, b) => cmpDate(a.tarix, b.tarix));
 
-    const rows = eqs.map(eq => {
-      const icaze = (eq.icazeNo || '').trim();
-      const matched = bankByRef[icaze] || [];
+    let esasAvail = esasBank.reduce((s, b) => s + (b.medaxil || 0), 0);
+    let edvAvail  = edvBank.reduce((s, b)  => s + (b.medaxil || 0), 0);
 
-      const esasRec = matched.filter(b => isEsas(b.hesabatUzreTeyinat));
-      const edvRec  = matched.filter(b => isEdv(b.hesabatUzreTeyinat));
+    const lastEsasTarix = esasBank.length ? esasBank[esasBank.length - 1].tarix : '';
+    const lastEdvTarix  = edvBank.length  ? edvBank[edvBank.length   - 1].tarix : '';
+    const esasQeydAll   = esasBank.map(b => b.qeyd).filter(Boolean).join(', ');
+    const edvQeydAll    = edvBank.map(b => b.qeyd).filter(Boolean).join(', ');
 
-      const paidEsas = esasRec.reduce((s, b) => s + (b.medaxil || 0), 0);
-      const paidEdv  = edvRec.reduce((s, b) => s + (b.medaxil || 0), 0);
-      const esasTarix = esasRec.length ? esasRec[esasRec.length - 1].tarix : '';
-      const edvTarix  = edvRec.length  ? edvRec[edvRec.length   - 1].tarix : '';
-      const esasQeyd  = esasRec.map(b => b.qeyd).filter(Boolean).join(', ');
-      const edvQeyd   = edvRec.map(b => b.qeyd).filter(Boolean).join(', ');
-
+    // FIFO: köhnə EQ-dən başlayıb ödəyirik
+    const rows = sorted.map(eq => {
       const eqEsas = eq.eqMeblegEsas || 0;
       const eqEdv  = eq.eqMeblegEdv  || 0;
 
-      personEqTotal   += eqEsas + eqEdv;
-      personPaidTotal += paidEsas + paidEdv;
+      const paidEsas = Math.min(esasAvail, eqEsas);
+      esasAvail -= paidEsas;
+      const paidEdv  = Math.min(edvAvail, eqEdv);
+      edvAvail -= paidEdv;
 
       return {
         reklamYayicisi: eq.reklamYayicisi || '',
         voen:           eq.voen || '',
-        icazeNo:        icaze,
+        icazeNo:        (eq.icazeNo || '').trim(),
         eqTarixi:       eq.eqTarixi || '',
         eqNomresi:      eq.eqNomresi || '',
         eqEsas, eqEdv,
-        paidEsas, esasTarix, esasQeyd,
-        paidEdv,  edvTarix,  edvQeyd,
-        hasMatch: matched.length > 0,
+        paidEsas,
+        esasTarix: paidEsas > 0 ? lastEsasTarix : '',
+        esasQeyd:  paidEsas > 0 ? esasQeydAll : '',
+        paidEdv,
+        edvTarix:  paidEdv > 0 ? lastEdvTarix : '',
+        edvQeyd:   paidEdv > 0 ? edvQeydAll : '',
+        hasMatch: personBank.length > 0,
       };
     });
 
-    // Şəxs üzrə artıq ödəniş — son sətirə əlavə olunacaq
-    const personArtiq = personPaidTotal > personEqTotal + 0.01
-      ? personPaidTotal - personEqTotal
-      : 0;
-    const lastBank = personBank
-      .slice()
-      .sort((a, b) => String(b.tarix || '').localeCompare(String(a.tarix || '')))[0];
-    const artiqTarix = personArtiq > 0 && lastBank ? lastBank.tarix : '';
+    // Bütün EQ-lar ödəndikdən sonra qalan = artıq ödəniş
+    const leftover = esasAvail + edvAvail;
+    const artiq = leftover > 0.01 ? leftover : 0;
+    const lastBank = personBank.slice().sort((a, b) => cmpDate(b.tarix, a.tarix))[0];
+    const artiqTarix = artiq > 0 && lastBank ? lastBank.tarix : '';
 
     rows.forEach((r, idx) => {
       const isLast = idx === rows.length - 1;
       result.push({
         ...r,
-        artiq:      isLast ? personArtiq : 0,
+        artiq:      isLast ? artiq : 0,
         artiqTarix: isLast ? artiqTarix : '',
       });
     });
