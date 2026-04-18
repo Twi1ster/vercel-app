@@ -22,6 +22,18 @@ const parseNum = v => {
   const s = String(v || '').replace(/[\s\u00a0]/g, '').replace(',', '.');
   return parseFloat(s) || 0;
 };
+const parseDate = v => {
+  if (!v) return '';
+  const n = Number(v);
+  if (!isNaN(n) && n > 30000 && n < 80000) {
+    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = d.getUTCFullYear();
+    return `${dd}.${mm}.${yyyy}`;
+  }
+  return String(v);
+};
 
 export default function EQModule({ api, onUpdate }) {
   const [data, setData] = useState([]);
@@ -93,13 +105,13 @@ export default function EQModule({ api, onUpdate }) {
         reklamYayicisi: String(row['Reklam yayıcısının adı'] || ''),
         voen: String(row['VÖEN'] || row['VOEN'] || row['voen'] || ''),
         icazeNo: String(row['İcazə'] || row['İcazə №'] || row['icazeNo'] || ''),
-        eqTarixi: String(row['Elektron qaimənin tarixi'] || row['EQ tarixi'] || ''),
+        eqTarixi: parseDate(row['Elektron qaimənin tarixi'] || row['EQ tarixi']),
         eqNomresi: String(row['Elektron qaimənin nömrəsi'] || row['EQ nömrəsi'] || ''),
         eqMeblegEsas: parseNum(row['EQ məbləği(əsas)'] ?? row['EQ məbləği (əsas)']),
         eqMeblegEdv: parseNum(row['EQ məbləği(ƏDV)'] ?? row['EQ məbləği (ƏDV)']),
-        odenisTarixi: String(row['Ödəniş tarixi'] || ''),
+        odenisTarixi: parseDate(row['Ödəniş tarixi']),
         odenisMeblegEsas: parseNum(row['Ödəniş məbləği(Əsas)'] ?? row['Ödəniş məbləği (Əsas)']),
-        odenisTarixiEdv: String(row['Ödəniş tarixi(ƏDV)'] ?? row['Ödəniş tarixi (ƏDV)'] ?? ''),
+        odenisTarixiEdv: parseDate(row['Ödəniş tarixi(ƏDV)'] ?? row['Ödəniş tarixi (ƏDV)']),
         odenisMeblegEdv: parseNum(row['Ödəniş məbləği(ƏDV)'] ?? row['Ödəniş məbləği (ƏDV)']),
         qeyd: String(row['Qeyd'] || row['qeyd'] || ''),
       }));

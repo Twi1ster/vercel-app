@@ -19,6 +19,18 @@ const parseNum = v => {
   const s = String(v || '').replace(/[\s\u00a0]/g, '').replace(',', '.');
   return parseFloat(s) || 0;
 };
+const parseDate = v => {
+  if (!v) return '';
+  const n = Number(v);
+  if (!isNaN(n) && n > 30000 && n < 80000) {
+    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = d.getUTCFullYear();
+    return `${dd}.${mm}.${yyyy}`;
+  }
+  return String(v);
+};
 
 export default function BankModule({ api, onUpdate }) {
   const [data, setData] = useState([]);
@@ -82,7 +94,7 @@ export default function BankModule({ api, onUpdate }) {
       );
       const docs = rows.map(row => ({
         bankHesab: String(row['Bank / hesab'] || row['Bank/Hesab'] || ''),
-        tarix: String(row['Tarix'] || row['tarix'] || ''),
+        tarix: parseDate(row['Tarix'] ?? row['tarix']),
         odeyiciVesait: String(row['Ödəyici / Vəsaiti alan'] || row['Ödəyici/Vasitə'] || ''),
         medaxil: parseNum(row['Mədaxil'] ?? row['MəDaxil']),
         mexaric: parseNum(row['Məxaric']),
